@@ -12,7 +12,11 @@
     "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "electron:build": "npm run build:vite && electron-builder",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src --ext .ts,.tsx"
+    "lint": "eslint src --ext .ts,.tsx",
+    "release": "npm run build:vite && electron-builder --publish always",
+    "release:mac": "npm run build:vite && electron-builder --mac --publish always",
+    "release:win": "npm run build:vite && electron-builder --win --publish always",
+    "release:linux": "npm run build:vite && electron-builder --linux --publish always"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",
@@ -29,10 +33,13 @@
     "@radix-ui/react-tabs": "^1.1.2",
     "@radix-ui/react-toast": "^1.2.4",
     "@radix-ui/react-tooltip": "^1.1.6",
+    "@supabase/supabase-js": "^2.89.0",
     "better-sqlite3": "^11.6.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
+    "electron-store": "^11.0.2",
+    "electron-updater": "^6.6.2",
     "lucide-react": "^0.468.0",
     "openai": "^6.15.0",
     "react-router-dom": "^7.1.1",
@@ -79,6 +86,12 @@
       "dist-electron",
       "dist"
     ],
+    "publish": {
+      "provider": "github",
+      "owner": "umrabdulllah",
+      "repo": "youtube-content-factory",
+      "releaseType": "release"
+    },
     "mac": {
       "icon": "resources/icon.icns",
       "target": [
@@ -99,6 +112,10 @@
         "AppImage",
         "deb"
       ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
     }
   }
 }

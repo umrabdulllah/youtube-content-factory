@@ -16,6 +16,30 @@ import type {
   QueueTaskWithProject,
   QueueStats,
   AppSettings,
+  LoginCredentials,
+  RegisterWithInviteInput,
+  UserProfile,
+  CreateInviteInput,
+  InviteToken,
+  UserRole,
+  AuthResult,
+  LogoutResult,
+  SessionResult,
+  SyncState,
+  SyncProjectStatsInput,
+  LogActivityInput,
+  SyncResult,
+  AdminDashboardData,
+  EditorStatus,
+  ActivityLog,
+  PaginatedProjectStats,
+  ProjectBrowserFilters,
+  DailyStats,
+  UpdateState,
+  UpdateInfo,
+  ProgressInfo,
+  CheckForUpdatesResult,
+  DownloadResult,
 } from '../shared/types'
 
 // Expose protected methods that allow the renderer process to use
@@ -186,6 +210,127 @@ const api = {
     minimize: () => ipcRenderer.invoke(IPC_CHANNELS.WINDOW.MINIMIZE),
     maximize: () => ipcRenderer.invoke(IPC_CHANNELS.WINDOW.MAXIMIZE),
     close: () => ipcRenderer.invoke(IPC_CHANNELS.WINDOW.CLOSE),
+  },
+
+  // Auth
+  auth: {
+    login: (credentials: LoginCredentials): Promise<AuthResult> =>
+      ipcRenderer.invoke(IPC_CHANNELS.AUTH.LOGIN, credentials),
+    logout: (): Promise<LogoutResult> =>
+      ipcRenderer.invoke(IPC_CHANNELS.AUTH.LOGOUT),
+    getSession: (): Promise<SessionResult> =>
+      ipcRenderer.invoke(IPC_CHANNELS.AUTH.GET_SESSION),
+    refreshSession: (): Promise<SessionResult> =>
+      ipcRenderer.invoke(IPC_CHANNELS.AUTH.REFRESH_SESSION),
+    registerWithInvite: (input: RegisterWithInviteInput): Promise<{ user: UserProfile | null; session: SessionResult['session'] }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.AUTH.REGISTER_WITH_INVITE, input),
+    getCurrentUser: (): Promise<UserProfile | null> =>
+      ipcRenderer.invoke(IPC_CHANNELS.AUTH.GET_CURRENT_USER),
+    updateProfile: (updates: { displayName?: string }): Promise<UserProfile> =>
+      ipcRenderer.invoke(IPC_CHANNELS.AUTH.UPDATE_PROFILE, updates),
+    changePassword: (currentPassword: string, newPassword: string): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.AUTH.CHANGE_PASSWORD, currentPassword, newPassword),
+  },
+
+  // Users (Admin only)
+  users: {
+    getAll: (): Promise<UserProfile[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.USERS.GET_ALL),
+    getById: (id: string): Promise<UserProfile | null> =>
+      ipcRenderer.invoke(IPC_CHANNELS.USERS.GET_BY_ID, id),
+    updateRole: (userId: string, role: UserRole): Promise<UserProfile> =>
+      ipcRenderer.invoke(IPC_CHANNELS.USERS.UPDATE_ROLE, userId, role),
+    delete: (userId: string): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.USERS.DELETE, userId),
+    createInvite: (input: CreateInviteInput): Promise<InviteToken> =>
+      ipcRenderer.invoke(IPC_CHANNELS.USERS.CREATE_INVITE, input),
+    getInvites: (): Promise<InviteToken[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.USERS.GET_INVITES),
+    revokeInvite: (inviteId: string): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.USERS.REVOKE_INVITE, inviteId),
+  },
+
+  // Sync (Stats synchronization)
+  sync: {
+    getState: (): Promise<SyncState> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SYNC.GET_STATE),
+    syncNow: (): Promise<SyncResult> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SYNC.SYNC_NOW),
+    logActivity: (input: LogActivityInput): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SYNC.LOG_ACTIVITY, input),
+    syncProject: (input: SyncProjectStatsInput): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SYNC.SYNC_PROJECT, input),
+    getPendingCount: (): Promise<number> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SYNC.GET_PENDING_COUNT),
+    // Admin only
+    getDashboard: (): Promise<AdminDashboardData> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SYNC.GET_DASHBOARD),
+    getEditorStatus: (editorId: string): Promise<EditorStatus | null> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SYNC.GET_EDITOR_STATUS, editorId),
+    getAllEditors: (): Promise<EditorStatus[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SYNC.GET_ALL_EDITORS),
+    getActivityFeed: (limit?: number): Promise<ActivityLog[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SYNC.GET_ACTIVITY_FEED, limit),
+    getProjectStats: (filters: ProjectBrowserFilters, page?: number, pageSize?: number): Promise<PaginatedProjectStats> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SYNC.GET_PROJECT_STATS, filters, page, pageSize),
+    getDailyStats: (days?: number): Promise<DailyStats[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SYNC.GET_DAILY_STATS, days),
+    // Real-time event listeners
+    onSyncStateChange: (callback: (state: SyncState) => void) => {
+      const handler = (_: unknown, state: SyncState) => callback(state)
+      ipcRenderer.on(IPC_CHANNELS.SYNC.ON_SYNC_STATE_CHANGE, handler)
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.SYNC.ON_SYNC_STATE_CHANGE, handler)
+    },
+    onActivity: (callback: (activity: ActivityLog) => void) => {
+      const handler = (_: unknown, activity: ActivityLog) => callback(activity)
+      ipcRenderer.on(IPC_CHANNELS.SYNC.ON_ACTIVITY, handler)
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.SYNC.ON_ACTIVITY, handler)
+    },
+    onEditorStatusChange: (callback: (status: EditorStatus) => void) => {
+      const handler = (_: unknown, status: EditorStatus) => callback(status)
+      ipcRenderer.on(IPC_CHANNELS.SYNC.ON_EDITOR_STATUS_CHANGE, handler)
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.SYNC.ON_EDITOR_STATUS_CHANGE, handler)
+    },
+  },
+
+  // Updater
+  updater: {
+    checkForUpdates: (): Promise<CheckForUpdatesResult> =>
+      ipcRenderer.invoke(IPC_CHANNELS.UPDATER.CHECK_FOR_UPDATES),
+    downloadUpdate: (): Promise<DownloadResult> =>
+      ipcRenderer.invoke(IPC_CHANNELS.UPDATER.DOWNLOAD_UPDATE),
+    installUpdate: (): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.UPDATER.INSTALL_UPDATE),
+    getState: (): Promise<UpdateState> =>
+      ipcRenderer.invoke(IPC_CHANNELS.UPDATER.GET_STATE),
+    getCurrentVersion: (): Promise<string> =>
+      ipcRenderer.invoke(IPC_CHANNELS.UPDATER.GET_CURRENT_VERSION),
+    // Real-time event listeners
+    onStateChange: (callback: (state: UpdateState) => void) => {
+      const handler = (_: unknown, state: UpdateState) => callback(state)
+      ipcRenderer.on(IPC_CHANNELS.UPDATER.ON_STATE_CHANGE, handler)
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.UPDATER.ON_STATE_CHANGE, handler)
+    },
+    onDownloadProgress: (callback: (progress: ProgressInfo) => void) => {
+      const handler = (_: unknown, progress: ProgressInfo) => callback(progress)
+      ipcRenderer.on(IPC_CHANNELS.UPDATER.ON_DOWNLOAD_PROGRESS, handler)
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.UPDATER.ON_DOWNLOAD_PROGRESS, handler)
+    },
+    onUpdateAvailable: (callback: (info: UpdateInfo) => void) => {
+      const handler = (_: unknown, info: UpdateInfo) => callback(info)
+      ipcRenderer.on(IPC_CHANNELS.UPDATER.ON_UPDATE_AVAILABLE, handler)
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.UPDATER.ON_UPDATE_AVAILABLE, handler)
+    },
+    onUpdateDownloaded: (callback: (info: UpdateInfo) => void) => {
+      const handler = (_: unknown, info: UpdateInfo) => callback(info)
+      ipcRenderer.on(IPC_CHANNELS.UPDATER.ON_UPDATE_DOWNLOADED, handler)
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.UPDATER.ON_UPDATE_DOWNLOADED, handler)
+    },
+    onError: (callback: (error: string) => void) => {
+      const handler = (_: unknown, error: string) => callback(error)
+      ipcRenderer.on(IPC_CHANNELS.UPDATER.ON_ERROR, handler)
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.UPDATER.ON_ERROR, handler)
+    },
   },
 }
 

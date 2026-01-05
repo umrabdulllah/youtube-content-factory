@@ -7,6 +7,10 @@ import { registerAnalyticsHandlers } from './analytics.ipc'
 import { registerFileSystemHandlers } from './filesystem.ipc'
 import { registerWindowHandlers } from './window.ipc'
 import { registerSearchHandlers } from './search.ipc'
+import { registerAuthHandlers } from './auth.ipc'
+import { registerUsersHandlers } from './users.ipc'
+import { registerSyncHandlers } from './sync.ipc'
+import { registerUpdaterHandlers } from './updater.ipc'
 
 export function registerAllIpcHandlers(): void {
   registerCategoriesHandlers()
@@ -18,6 +22,10 @@ export function registerAllIpcHandlers(): void {
   registerFileSystemHandlers()
   registerWindowHandlers()
   registerSearchHandlers()
+  registerAuthHandlers()
+  registerUsersHandlers()
+  registerSyncHandlers()
+  registerUpdaterHandlers()
 
   console.log('All IPC handlers registered')
 }

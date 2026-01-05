@@ -8,9 +8,13 @@ import {
   Plus,
   ChevronRight,
   ChevronLeft,
+  Users,
+  LogOut,
+  Activity,
 } from 'lucide-react'
 import { cn } from '@renderer/lib/utils'
 import { Button } from '../ui/button'
+import { useAuth } from '../../contexts/AuthContext'
 
 interface SidebarProps {
   collapsed: boolean
@@ -27,6 +31,12 @@ const mainNavItems = [
 export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const location = useLocation()
   const navigate = useNavigate()
+  const { isAdmin, logout } = useAuth()
+
+  const handleLogout = async () => {
+    await logout()
+    navigate('/login')
+  }
 
   return (
     <aside
@@ -76,6 +86,40 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
 
       {/* Bottom Section */}
       <div className="p-3 border-t border-border space-y-1">
+        {/* Admin Only - Admin Dashboard */}
+        {isAdmin && (
+          <Link
+            to="/admin"
+            className={cn(
+              'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors',
+              location.pathname === '/admin'
+                ? 'bg-accent/10 text-accent'
+                : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
+              collapsed && 'justify-center px-0'
+            )}
+          >
+            <Activity className="w-4 h-4 flex-shrink-0" />
+            {!collapsed && <span>Admin Dashboard</span>}
+          </Link>
+        )}
+
+        {/* Admin Only - User Management */}
+        {isAdmin && (
+          <Link
+            to="/users"
+            className={cn(
+              'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors',
+              location.pathname === '/users'
+                ? 'bg-accent/10 text-accent'
+                : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
+              collapsed && 'justify-center px-0'
+            )}
+          >
+            <Users className="w-4 h-4 flex-shrink-0" />
+            {!collapsed && <span>Users</span>}
+          </Link>
+        )}
+
         <Link
           to="/settings"
           className={cn(
@@ -89,6 +133,19 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
           <Settings className="w-4 h-4 flex-shrink-0" />
           {!collapsed && <span>Settings</span>}
         </Link>
+
+        {/* Logout */}
+        <button
+          onClick={handleLogout}
+          className={cn(
+            'flex items-center gap-3 px-3 py-2 rounded-md text-sm w-full transition-colors',
+            'text-text-secondary hover:bg-red-500/10 hover:text-red-500',
+            collapsed && 'justify-center px-0'
+          )}
+        >
+          <LogOut className="w-4 h-4 flex-shrink-0" />
+          {!collapsed && <span>Logout</span>}
+        </button>
 
         {/* Collapse Toggle */}
         <button

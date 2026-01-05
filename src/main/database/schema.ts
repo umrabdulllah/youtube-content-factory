@@ -114,6 +114,41 @@ export function createSchema(db: Database.Database): void {
     )
   `)
 
+  // Sync offline queue table - stores events to sync when back online
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS sync_offline_queue (
+      id TEXT PRIMARY KEY,
+      event_type TEXT NOT NULL,
+      payload JSON NOT NULL,
+      attempts INTEGER DEFAULT 0,
+      max_attempts INTEGER DEFAULT 5,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      last_attempt_at DATETIME,
+      error TEXT
+    )
+  `)
+
+  // Sync state table - tracks sync metadata
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS sync_state (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `)
+
+  // Project sync tracking - tracks which projects have been synced
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS project_sync_tracking (
+      local_project_id TEXT PRIMARY KEY,
+      remote_id TEXT,
+      last_synced_at DATETIME,
+      last_status TEXT,
+      needs_sync INTEGER DEFAULT 1,
+      FOREIGN KEY (local_project_id) REFERENCES projects(id) ON DELETE CASCADE
+    )
+  `)
+
   // Migrate existing queue_tasks table to add new columns if missing
   const tableInfo = db.prepare('PRAGMA table_info(queue_tasks)').all() as Array<{ name: string }>
   const existingColumns = new Set(tableInfo.map((col) => col.name))
@@ -146,6 +181,8 @@ export function createSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_queue_dependency ON queue_tasks(depends_on_task_id);
     CREATE INDEX IF NOT EXISTS idx_queue_stage_group ON queue_tasks(stage_group);
     CREATE INDEX IF NOT EXISTS idx_analytics_date ON analytics_daily(date);
+    CREATE INDEX IF NOT EXISTS idx_sync_queue_created ON sync_offline_queue(created_at);
+    CREATE INDEX IF NOT EXISTS idx_sync_tracking_needs_sync ON project_sync_tracking(needs_sync);
   `)
 
   console.log('Database schema created successfully')

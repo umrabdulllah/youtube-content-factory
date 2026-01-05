@@ -2,6 +2,8 @@ import { useEffect, useRef } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AppLayout } from './components/layout/AppLayout'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { AuthProvider } from './contexts/AuthContext'
+import { ProtectedRoute } from './components/ProtectedRoute'
 import { Dashboard } from './pages/Dashboard'
 import { Categories } from './pages/Categories'
 import { CategoryDetail } from './pages/CategoryDetail'
@@ -12,7 +14,11 @@ import { ProjectDetail } from './pages/ProjectDetail'
 import { NewProject } from './pages/NewProject'
 import { Queue } from './pages/Queue'
 import { Settings } from './pages/Settings'
+import { Login } from './pages/Login'
+import { UserManagement } from './pages/UserManagement'
+import { AdminDashboard } from './pages/AdminDashboard'
 import { Toaster } from './components/ui/toaster'
+import { UpdateNotification } from './components/UpdateNotification'
 
 // Completion sound notification
 function useCompletionSound() {
@@ -77,25 +83,58 @@ function App() {
 
   return (
     <ErrorBoundary>
-      <BrowserRouter>
-        <AppLayout>
-          <ErrorBoundary>
-            <Routes>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/categories" element={<Categories />} />
-              <Route path="/categories/:id" element={<CategoryDetail />} />
-              <Route path="/channels" element={<Channels />} />
-              <Route path="/channels/:id" element={<ChannelDetail />} />
-              <Route path="/channels/:channelId/projects" element={<Projects />} />
-              <Route path="/projects/new" element={<NewProject />} />
-              <Route path="/projects/:id" element={<ProjectDetail />} />
-              <Route path="/queue" element={<Queue />} />
-              <Route path="/settings" element={<Settings />} />
-            </Routes>
-          </ErrorBoundary>
-        </AppLayout>
-        <Toaster />
-      </BrowserRouter>
+      <AuthProvider>
+        <BrowserRouter>
+          <Routes>
+            {/* Public route - Login */}
+            <Route path="/login" element={<Login />} />
+
+            {/* Protected routes - require authentication */}
+            <Route
+              path="/*"
+              element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <ErrorBoundary>
+                      <Routes>
+                        <Route path="/" element={<Dashboard />} />
+                        <Route path="/categories" element={<Categories />} />
+                        <Route path="/categories/:id" element={<CategoryDetail />} />
+                        <Route path="/channels" element={<Channels />} />
+                        <Route path="/channels/:id" element={<ChannelDetail />} />
+                        <Route path="/channels/:channelId/projects" element={<Projects />} />
+                        <Route path="/projects/new" element={<NewProject />} />
+                        <Route path="/projects/:id" element={<ProjectDetail />} />
+                        <Route path="/queue" element={<Queue />} />
+                        <Route path="/settings" element={<Settings />} />
+                        {/* Admin only routes */}
+                        <Route
+                          path="/users"
+                          element={
+                            <ProtectedRoute requireAdmin>
+                              <UserManagement />
+                            </ProtectedRoute>
+                          }
+                        />
+                        <Route
+                          path="/admin"
+                          element={
+                            <ProtectedRoute requireAdmin>
+                              <AdminDashboard />
+                            </ProtectedRoute>
+                          }
+                        />
+                      </Routes>
+                    </ErrorBoundary>
+                  </AppLayout>
+                </ProtectedRoute>
+              }
+            />
+          </Routes>
+          <Toaster />
+          <UpdateNotification />
+        </BrowserRouter>
+      </AuthProvider>
     </ErrorBoundary>
   )
 }

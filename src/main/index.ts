@@ -5,6 +5,9 @@ import { initializeLogging, logger } from './utils/logger'
 import { initializeDatabase, closeDatabase } from './database'
 import { registerAllIpcHandlers } from './ipc'
 import { queueManager } from './services/queue-manager'
+import { initializeSupabase, cleanupSupabase } from './services/supabase'
+import { initializeSyncService, cleanupSyncService } from './services/sync/sync-service'
+import { initializeUpdater, cleanupUpdater } from './services/updater'
 
 // Initialize logging as early as possible to capture all output
 initializeLogging()
@@ -26,6 +29,9 @@ const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
 async function createWindow() {
   // Initialize database before creating window
   await initializeDatabase()
+
+  // Initialize Supabase client for auth
+  initializeSupabase()
 
   // Create the browser window.
   mainWindow = new BrowserWindow({
@@ -50,6 +56,12 @@ async function createWindow() {
 
   // Start the queue manager to process any pending tasks
   queueManager.start()
+
+  // Initialize sync service for stats synchronization
+  await initializeSyncService(mainWindow)
+
+  // Initialize auto-updater service
+  initializeUpdater(mainWindow)
 
   // Open external links in browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -87,8 +99,11 @@ app.on('window-all-closed', () => {
 })
 
 // Stop queue manager and close database before quitting
-app.on('before-quit', () => {
+app.on('before-quit', async () => {
   queueManager.stop()
+  cleanupUpdater()
+  await cleanupSyncService()
+  await cleanupSupabase()
   closeDatabase()
   logger.close()
 })

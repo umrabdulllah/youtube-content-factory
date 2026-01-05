@@ -88,4 +88,62 @@ export const IPC_CHANNELS = {
     MAXIMIZE: 'window:maximize',
     CLOSE: 'window:close',
   },
+
+  // Auth
+  AUTH: {
+    LOGIN: 'auth:login',
+    LOGOUT: 'auth:logout',
+    GET_SESSION: 'auth:getSession',
+    REFRESH_SESSION: 'auth:refreshSession',
+    REGISTER_WITH_INVITE: 'auth:registerWithInvite',
+    GET_CURRENT_USER: 'auth:getCurrentUser',
+    UPDATE_PROFILE: 'auth:updateProfile',
+    CHANGE_PASSWORD: 'auth:changePassword',
+  },
+
+  // Users (Admin only)
+  USERS: {
+    GET_ALL: 'users:getAll',
+    GET_BY_ID: 'users:getById',
+    UPDATE_ROLE: 'users:updateRole',
+    DELETE: 'users:delete',
+    CREATE_INVITE: 'users:createInvite',
+    GET_INVITES: 'users:getInvites',
+    REVOKE_INVITE: 'users:revokeInvite',
+  },
+
+  // Sync (Stats synchronization)
+  SYNC: {
+    GET_STATE: 'sync:getState',
+    SYNC_NOW: 'sync:syncNow',
+    LOG_ACTIVITY: 'sync:logActivity',
+    SYNC_PROJECT: 'sync:syncProject',
+    GET_PENDING_COUNT: 'sync:getPendingCount',
+    // Admin only
+    GET_DASHBOARD: 'sync:getDashboard',
+    GET_EDITOR_STATUS: 'sync:getEditorStatus',
+    GET_ALL_EDITORS: 'sync:getAllEditors',
+    GET_ACTIVITY_FEED: 'sync:getActivityFeed',
+    GET_PROJECT_STATS: 'sync:getProjectStats',
+    GET_DAILY_STATS: 'sync:getDailyStats',
+    // Real-time events
+    ON_SYNC_STATE_CHANGE: 'sync:onSyncStateChange',
+    ON_ACTIVITY: 'sync:onActivity',
+    ON_EDITOR_STATUS_CHANGE: 'sync:onEditorStatusChange',
+  },
+
+  // Updater
+  UPDATER: {
+    CHECK_FOR_UPDATES: 'updater:checkForUpdates',
+    DOWNLOAD_UPDATE: 'updater:downloadUpdate',
+    INSTALL_UPDATE: 'updater:installUpdate',
+    GET_STATE: 'updater:getState',
+    GET_CURRENT_VERSION: 'updater:getCurrentVersion',
+    // Real-time events
+    ON_STATE_CHANGE: 'updater:onStateChange',
+    ON_DOWNLOAD_PROGRESS: 'updater:onDownloadProgress',
+    ON_UPDATE_AVAILABLE: 'updater:onUpdateAvailable',
+    ON_UPDATE_DOWNLOADED: 'updater:onUpdateDownloaded',
+    ON_ERROR: 'updater:onError',
+  },
 } as const

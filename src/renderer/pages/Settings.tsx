@@ -1,5 +1,6 @@
 import * as React from 'react'
-import { FolderOpen, Palette, Save, Brain, Image, Volume2, RefreshCw, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { FolderOpen, Palette, Save, Brain, Image, Volume2, RefreshCw, AlertCircle, CheckCircle2, Download, ArrowUpCircle } from 'lucide-react'
+import { useUpdater } from '../hooks/useUpdater'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card'
 import { Input } from '../components/ui/input'
@@ -12,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select'
+import { Progress } from '../components/ui/progress'
 import type { AppSettings, VoiceTemplate, PromptModel } from '@shared/types'
 
 export function Settings() {
@@ -24,6 +26,19 @@ export function Settings() {
   const [voiceTemplates, setVoiceTemplates] = React.useState<VoiceTemplate[]>([])
   const [loadingTemplates, setLoadingTemplates] = React.useState(false)
   const [voiceBalance, setVoiceBalance] = React.useState<number | null>(null)
+
+  // Updater state
+  const {
+    state: updateState,
+    isChecking,
+    isDownloading,
+    isUpdateAvailable,
+    isUpdateDownloaded,
+    hasError,
+    checkForUpdates,
+    downloadUpdate,
+    installUpdate,
+  } = useUpdater()
 
   React.useEffect(() => {
     loadSettings()
@@ -444,6 +459,93 @@ export function Settings() {
               Number of generation tasks to run in parallel
             </p>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* App Updates */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <ArrowUpCircle className="w-4 h-4" />
+            App Updates
+          </CardTitle>
+          <CardDescription>
+            Check for and install application updates
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Current Version</p>
+              <p className="text-sm text-text-tertiary">{updateState.currentVersion || 'Loading...'}</p>
+            </div>
+            <Button
+              variant="outline"
+              onClick={checkForUpdates}
+              disabled={isChecking || isDownloading}
+              className="gap-2"
+            >
+              <RefreshCw className={`w-4 h-4 ${isChecking ? 'animate-spin' : ''}`} />
+              {isChecking ? 'Checking...' : 'Check for Updates'}
+            </Button>
+          </div>
+
+          {/* Update Status */}
+          {isUpdateAvailable && (
+            <div className="flex items-center justify-between rounded-md bg-accent/10 p-3">
+              <div>
+                <p className="text-sm font-medium text-accent">Update Available</p>
+                <p className="text-sm text-text-secondary">
+                  Version {updateState.updateInfo?.version} is ready to download
+                </p>
+              </div>
+              <Button onClick={downloadUpdate} className="gap-2">
+                <Download className="w-4 h-4" />
+                Download
+              </Button>
+            </div>
+          )}
+
+          {isDownloading && updateState.progress && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span>Downloading update...</span>
+                <span>{updateState.progress.percent.toFixed(0)}%</span>
+              </div>
+              <Progress value={updateState.progress.percent} />
+            </div>
+          )}
+
+          {isUpdateDownloaded && (
+            <div className="flex items-center justify-between rounded-md bg-green-500/10 p-3">
+              <div>
+                <p className="text-sm font-medium text-green-600 dark:text-green-400">
+                  Update Ready
+                </p>
+                <p className="text-sm text-text-secondary">
+                  Version {updateState.updateInfo?.version} is ready to install
+                </p>
+              </div>
+              <Button onClick={installUpdate} className="gap-2">
+                <RefreshCw className="w-4 h-4" />
+                Restart & Install
+              </Button>
+            </div>
+          )}
+
+          {hasError && (
+            <div className="flex items-center gap-2 text-sm text-red-500">
+              <AlertCircle className="w-4 h-4" />
+              {updateState.error}
+            </div>
+          )}
+
+          {updateState.status === 'not-available' && (
+            <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+              <CheckCircle2 className="w-4 h-4" />
+              You are running the latest version
+            </div>
+          )}
         </CardContent>
       </Card>
 
