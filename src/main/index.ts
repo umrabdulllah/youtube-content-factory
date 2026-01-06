@@ -34,14 +34,20 @@ async function createWindow() {
   initializeSupabase()
 
   // Create the browser window.
+  const isMac = process.platform === 'darwin'
+
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     minWidth: 1000,
     minHeight: 700,
     backgroundColor: '#141414',
-    titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 16, y: 16 },
+    ...(isMac ? {
+      titleBarStyle: 'hiddenInset',
+      trafficLightPosition: { x: 16, y: 16 },
+    } : {
+      frame: true,
+    }),
     show: false,
     webPreferences: {
       preload: path.join(__dirname, '../preload/preload.mjs'),
