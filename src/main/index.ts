@@ -27,11 +27,19 @@ let mainWindow: BrowserWindow | null = null
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
 
 async function createWindow() {
-  // Initialize database before creating window
-  await initializeDatabase()
+  try {
+    // Initialize database before creating window
+    await initializeDatabase()
+  } catch (error) {
+    console.error('Failed to initialize database:', error)
+  }
 
-  // Initialize Supabase client for auth
-  initializeSupabase()
+  try {
+    // Initialize Supabase client for auth
+    initializeSupabase()
+  } catch (error) {
+    console.error('Failed to initialize Supabase:', error)
+  }
 
   // Create the browser window.
   const isMac = process.platform === 'darwin'
@@ -61,13 +69,25 @@ async function createWindow() {
   registerAllIpcHandlers()
 
   // Start the queue manager to process any pending tasks
-  queueManager.start()
+  try {
+    queueManager.start()
+  } catch (error) {
+    console.error('Failed to start queue manager:', error)
+  }
 
   // Initialize sync service for stats synchronization
-  await initializeSyncService(mainWindow)
+  try {
+    await initializeSyncService(mainWindow)
+  } catch (error) {
+    console.error('Failed to initialize sync service:', error)
+  }
 
   // Initialize auto-updater service
-  initializeUpdater(mainWindow)
+  try {
+    initializeUpdater(mainWindow)
+  } catch (error) {
+    console.error('Failed to initialize updater:', error)
+  }
 
   // Open external links in browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -75,9 +95,31 @@ async function createWindow() {
     return { action: 'deny' }
   })
 
-  // Show window when ready
+  // Show window when ready (with fallback timeout)
+  let windowShown = false
   mainWindow.once('ready-to-show', () => {
-    mainWindow?.show()
+    if (!windowShown) {
+      windowShown = true
+      mainWindow?.show()
+    }
+  })
+
+  // Fallback: show window after 5 seconds even if ready-to-show didn't fire
+  setTimeout(() => {
+    if (!windowShown && mainWindow) {
+      windowShown = true
+      console.warn('Forcing window show after timeout')
+      mainWindow.show()
+    }
+  }, 5000)
+
+  // Log renderer errors
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    console.error('Renderer process gone:', details)
+  })
+
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
+    console.error('Failed to load:', errorCode, errorDescription)
   })
 
   // Load the app
