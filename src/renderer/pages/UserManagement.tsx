@@ -88,13 +88,24 @@ export function UserManagement() {
       setInviteEmail('')
       setInviteRole('editor')
 
-      // Copy invite link to clipboard
-      const inviteLink = `Invite Token: ${invite.token}\nEmail: ${invite.email}\nExpires: ${new Date(invite.expiresAt).toLocaleDateString()}`
-      await navigator.clipboard.writeText(inviteLink)
+      // Copy invite instructions to clipboard
+      const inviteInfo = `You've been invited to YouTube Content Factory!
+
+To set up your account:
+1. Open the app and click "Have an invite? Create your account"
+2. Or go directly to the Register page
+
+Your invite details:
+- Email: ${invite.email}
+- Invite Token: ${invite.token}
+- Expires: ${new Date(invite.expiresAt).toLocaleDateString()}
+
+Enter your email, the invite token above, and choose a password to complete your registration.`
+      await navigator.clipboard.writeText(inviteInfo)
 
       toast({
         title: 'Invite Created',
-        description: 'Invite details copied to clipboard. Share with the new user.',
+        description: 'Invite instructions copied to clipboard. Share them with your new team member.',
         variant: 'success',
       })
     } catch (error) {
@@ -167,11 +178,22 @@ export function UserManagement() {
   }
 
   const copyInviteToken = async (invite: InviteToken) => {
-    const inviteInfo = `Invite Token: ${invite.token}\nEmail: ${invite.email}\nExpires: ${new Date(invite.expiresAt).toLocaleDateString()}`
+    const inviteInfo = `You've been invited to YouTube Content Factory!
+
+To set up your account:
+1. Open the app and click "Have an invite? Create your account"
+2. Or go directly to the Register page
+
+Your invite details:
+- Email: ${invite.email}
+- Invite Token: ${invite.token}
+- Expires: ${new Date(invite.expiresAt).toLocaleDateString()}
+
+Enter your email, the invite token above, and choose a password to complete your registration.`
     await navigator.clipboard.writeText(inviteInfo)
     toast({
       title: 'Copied',
-      description: 'Invite details copied to clipboard',
+      description: 'Invite instructions copied to clipboard',
       variant: 'success',
     })
   }

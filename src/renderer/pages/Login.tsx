@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { Loader2, Youtube } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { Button } from '../components/ui/button'
@@ -125,7 +125,13 @@ export function Login() {
 
           <div className="mt-6 text-center">
             <p className="text-sm text-text-tertiary">
-              Don't have an account? Contact your admin for an invite.
+              Have an invite?{' '}
+              <Link
+                to="/register"
+                className="text-accent hover:underline font-medium"
+              >
+                Create your account
+              </Link>
             </p>
           </div>
         </CardContent>

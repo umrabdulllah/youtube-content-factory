@@ -15,6 +15,7 @@ import { NewProject } from './pages/NewProject'
 import { Queue } from './pages/Queue'
 import { Settings } from './pages/Settings'
 import { Login } from './pages/Login'
+import { Register } from './pages/Register'
 import { UserManagement } from './pages/UserManagement'
 import { AdminDashboard } from './pages/AdminDashboard'
 import { Toaster } from './components/ui/toaster'
@@ -86,8 +87,9 @@ function App() {
       <AuthProvider>
         <HashRouter>
           <Routes>
-            {/* Public route - Login */}
+            {/* Public routes */}
             <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
 
             {/* Protected routes - require authentication */}
             <Route
