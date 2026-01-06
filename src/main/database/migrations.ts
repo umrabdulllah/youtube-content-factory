@@ -11,6 +11,15 @@ const migrations: Migration[] = [
     version: 1,
     name: 'add_channel_sort_order',
     up: (db) => {
+      // Check if sort_order column already exists
+      const tableInfo = db.prepare('PRAGMA table_info(channels)').all() as Array<{ name: string }>
+      const existingColumns = new Set(tableInfo.map((col) => col.name))
+
+      if (existingColumns.has('sort_order')) {
+        console.log('sort_order column already exists, skipping migration')
+        return
+      }
+
       // Add sort_order column to channels table
       db.exec(`ALTER TABLE channels ADD COLUMN sort_order INTEGER DEFAULT 0`)
 

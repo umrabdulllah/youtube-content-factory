@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { HashRouter, Routes, Route } from 'react-router-dom'
 import { AppLayout } from './components/layout/AppLayout'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { AuthProvider } from './contexts/AuthContext'
@@ -84,7 +84,7 @@ function App() {
   return (
     <ErrorBoundary>
       <AuthProvider>
-        <BrowserRouter>
+        <HashRouter>
           <Routes>
             {/* Public route - Login */}
             <Route path="/login" element={<Login />} />
@@ -133,7 +133,7 @@ function App() {
           </Routes>
           <Toaster />
           <UpdateNotification />
-        </BrowserRouter>
+        </HashRouter>
       </AuthProvider>
     </ErrorBoundary>
   )
