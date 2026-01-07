@@ -65,10 +65,41 @@ export function getCategoryBySlug(slug: string): Category | null {
   return row ? mapRow(row) : null
 }
 
+/**
+ * Generates a unique slug for a category (globally unique).
+ * Appends -2, -3, etc. if the base slug already exists.
+ */
+function generateUniqueCategorySlug(
+  name: string,
+  excludeCategoryId?: string
+): string {
+  const db = getDatabase()
+  const baseSlug = slugify(name, { lower: true, strict: true })
+
+  const query = excludeCategoryId
+    ? `SELECT slug FROM categories WHERE id != ? AND (slug = ? OR slug LIKE ?)`
+    : `SELECT slug FROM categories WHERE slug = ? OR slug LIKE ?`
+
+  const params = excludeCategoryId
+    ? [excludeCategoryId, baseSlug, `${baseSlug}-%`]
+    : [baseSlug, `${baseSlug}-%`]
+
+  const existingSlugs = db.prepare(query).all(...params) as { slug: string }[]
+
+  if (existingSlugs.length === 0) return baseSlug
+
+  const slugSet = new Set(existingSlugs.map(row => row.slug))
+  if (!slugSet.has(baseSlug)) return baseSlug
+
+  let suffix = 2
+  while (slugSet.has(`${baseSlug}-${suffix}`)) suffix++
+  return `${baseSlug}-${suffix}`
+}
+
 export function createCategory(input: CreateCategoryInput): Category {
   const db = getDatabase()
   const id = uuid()
-  const slug = slugify(input.name, { lower: true, strict: true })
+  const slug = generateUniqueCategorySlug(input.name)
   const now = new Date().toISOString()
 
   // Get max sort order
@@ -110,7 +141,7 @@ export function updateCategory(input: UpdateCategoryInput): Category {
     updates.push('name = ?')
     values.push(input.name)
     updates.push('slug = ?')
-    values.push(slugify(input.name, { lower: true, strict: true }))
+    values.push(generateUniqueCategorySlug(input.name, input.id))
   }
   if (input.description !== undefined) {
     updates.push('description = ?')

@@ -15,6 +15,7 @@ import { generatePrompts, type PromptBatch, type PromptProgress } from './prompt
 import { createImageService, type ReplicateImageService } from './image.service'
 import { createAudioService, type RussianTTSService } from './audio.service'
 import { createSubtitleService, type WhisperXSubtitleService } from './subtitle.service'
+import { getApiKey } from '../api-keys.service'
 import type { AppSettings } from '../../../shared/types'
 import type { ProgressCallback } from './types'
 
@@ -106,10 +107,10 @@ export class PipelineOrchestrator extends EventEmitter {
     let audioPath: string | null = null
     let subtitlePath: string | null = null
 
-    // Get API keys
-    const promptApiKey = settings.apiKeys.anthropicApi || settings.apiKeys.openaiApi
-    const replicateApiKey = settings.apiKeys.replicateApi
-    const voiceApiKey = settings.apiKeys.voiceApi
+    // Get API keys (with cloud fallback for editors)
+    const promptApiKey = await getApiKey('anthropicApi') || await getApiKey('openaiApi')
+    const replicateApiKey = await getApiKey('replicateApi')
+    const voiceApiKey = await getApiKey('voiceApi')
 
     try {
       progress.phase = 'generating'

@@ -64,10 +64,42 @@ export function getChannelsByCategory(categoryId: string): Channel[] {
   return rows.map(mapRow)
 }
 
+/**
+ * Generates a unique slug for a channel within a category.
+ * Appends -2, -3, etc. if the base slug already exists.
+ */
+function generateUniqueChannelSlug(
+  categoryId: string,
+  name: string,
+  excludeChannelId?: string
+): string {
+  const db = getDatabase()
+  const baseSlug = slugify(name, { lower: true, strict: true })
+
+  const query = excludeChannelId
+    ? `SELECT slug FROM channels WHERE category_id = ? AND id != ? AND (slug = ? OR slug LIKE ?)`
+    : `SELECT slug FROM channels WHERE category_id = ? AND (slug = ? OR slug LIKE ?)`
+
+  const params = excludeChannelId
+    ? [categoryId, excludeChannelId, baseSlug, `${baseSlug}-%`]
+    : [categoryId, baseSlug, `${baseSlug}-%`]
+
+  const existingSlugs = db.prepare(query).all(...params) as { slug: string }[]
+
+  if (existingSlugs.length === 0) return baseSlug
+
+  const slugSet = new Set(existingSlugs.map(row => row.slug))
+  if (!slugSet.has(baseSlug)) return baseSlug
+
+  let suffix = 2
+  while (slugSet.has(`${baseSlug}-${suffix}`)) suffix++
+  return `${baseSlug}-${suffix}`
+}
+
 export function createChannel(input: CreateChannelInput): Channel {
   const db = getDatabase()
   const id = uuid()
-  const slug = slugify(input.name, { lower: true, strict: true })
+  const slug = generateUniqueChannelSlug(input.categoryId, input.name)
   const now = new Date().toISOString()
 
   // Get max sort_order within this category
@@ -109,7 +141,7 @@ export function updateChannel(input: UpdateChannelInput): Channel {
     updates.push('name = ?')
     values.push(input.name)
     updates.push('slug = ?')
-    values.push(slugify(input.name, { lower: true, strict: true }))
+    values.push(generateUniqueChannelSlug(channel.categoryId, input.name, input.id))
   }
   if (input.description !== undefined) {
     updates.push('description = ?')
