@@ -85,10 +85,52 @@ function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(word => word.length > 0).length
 }
 
+/**
+ * Generates a unique slug for a project within a channel.
+ * Appends -2, -3, etc. if the base slug already exists.
+ */
+function generateUniqueSlug(
+  channelId: string,
+  title: string,
+  excludeProjectId?: string
+): string {
+  const db = getDatabase()
+  const baseSlug = slugify(title, { lower: true, strict: true })
+
+  // Query existing slugs matching this pattern in the channel
+  const query = excludeProjectId
+    ? `SELECT slug FROM projects WHERE channel_id = ? AND id != ? AND (slug = ? OR slug LIKE ?)`
+    : `SELECT slug FROM projects WHERE channel_id = ? AND (slug = ? OR slug LIKE ?)`
+
+  const params = excludeProjectId
+    ? [channelId, excludeProjectId, baseSlug, `${baseSlug}-%`]
+    : [channelId, baseSlug, `${baseSlug}-%`]
+
+  const existingSlugs = db.prepare(query).all(...params) as { slug: string }[]
+
+  if (existingSlugs.length === 0) {
+    return baseSlug
+  }
+
+  const slugSet = new Set(existingSlugs.map(row => row.slug))
+
+  if (!slugSet.has(baseSlug)) {
+    return baseSlug
+  }
+
+  // Find next available suffix
+  let suffix = 2
+  while (slugSet.has(`${baseSlug}-${suffix}`)) {
+    suffix++
+  }
+
+  return `${baseSlug}-${suffix}`
+}
+
 export function createProject(input: CreateProjectInput): Project {
   const db = getDatabase()
   const id = uuid()
-  const slug = slugify(input.title, { lower: true, strict: true })
+  const slug = generateUniqueSlug(input.channelId, input.title)
   const now = new Date().toISOString()
   const wordCount = input.script ? countWords(input.script) : 0
 
@@ -142,7 +184,7 @@ export function updateProject(input: UpdateProjectInput): Project {
     updates.push('title = ?')
     values.push(input.title)
     updates.push('slug = ?')
-    values.push(slugify(input.title, { lower: true, strict: true }))
+    values.push(generateUniqueSlug(project.channelId, input.title, input.id))
   }
   if (input.script !== undefined) {
     updates.push('script = ?')
