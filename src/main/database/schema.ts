@@ -171,6 +171,57 @@ export function createSchema(db: Database.Database): void {
     db.exec('ALTER TABLE projects ADD COLUMN generate_audio INTEGER DEFAULT 1')
   }
 
+  // Cloud sync metadata table - tracks sync versions for categories/channels/api_keys
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS cloud_sync_meta (
+      resource_type TEXT PRIMARY KEY,
+      local_version INTEGER DEFAULT 0,
+      cloud_version INTEGER DEFAULT 0,
+      last_synced_at DATETIME
+    )
+  `)
+
+  // Initialize cloud sync meta if not present
+  db.exec(`
+    INSERT OR IGNORE INTO cloud_sync_meta (resource_type, local_version, cloud_version)
+    VALUES
+      ('categories', 0, 0),
+      ('channels', 0, 0),
+      ('api_keys', 0, 0)
+  `)
+
+  // Cached API keys table - stores encrypted API keys locally for offline use
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS cached_api_keys (
+      key_type TEXT PRIMARY KEY,
+      encrypted_value TEXT NOT NULL,
+      cached_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      expires_at DATETIME
+    )
+  `)
+
+  // Add cloud_id and is_cloud_synced columns to categories if missing
+  const categoriesTableInfo = db.prepare('PRAGMA table_info(categories)').all() as Array<{ name: string }>
+  const existingCategoryColumns = new Set(categoriesTableInfo.map((col) => col.name))
+
+  if (!existingCategoryColumns.has('cloud_id')) {
+    db.exec('ALTER TABLE categories ADD COLUMN cloud_id TEXT')
+  }
+  if (!existingCategoryColumns.has('is_cloud_synced')) {
+    db.exec('ALTER TABLE categories ADD COLUMN is_cloud_synced INTEGER DEFAULT 0')
+  }
+
+  // Add cloud_id and is_cloud_synced columns to channels if missing
+  const channelsTableInfo = db.prepare('PRAGMA table_info(channels)').all() as Array<{ name: string }>
+  const existingChannelColumns = new Set(channelsTableInfo.map((col) => col.name))
+
+  if (!existingChannelColumns.has('cloud_id')) {
+    db.exec('ALTER TABLE channels ADD COLUMN cloud_id TEXT')
+  }
+  if (!existingChannelColumns.has('is_cloud_synced')) {
+    db.exec('ALTER TABLE channels ADD COLUMN is_cloud_synced INTEGER DEFAULT 0')
+  }
+
   // Create indexes
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_channels_category ON channels(category_id);
@@ -183,6 +234,8 @@ export function createSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_analytics_date ON analytics_daily(date);
     CREATE INDEX IF NOT EXISTS idx_sync_queue_created ON sync_offline_queue(created_at);
     CREATE INDEX IF NOT EXISTS idx_sync_tracking_needs_sync ON project_sync_tracking(needs_sync);
+    CREATE INDEX IF NOT EXISTS idx_categories_cloud_id ON categories(cloud_id);
+    CREATE INDEX IF NOT EXISTS idx_channels_cloud_id ON channels(cloud_id);
   `)
 
   console.log('Database schema created successfully')

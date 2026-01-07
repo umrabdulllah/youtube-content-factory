@@ -1,6 +1,8 @@
 import * as React from 'react'
-import { FolderOpen, Palette, Save, Brain, Image, Volume2, RefreshCw, AlertCircle, CheckCircle2, Download, ArrowUpCircle } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { FolderOpen, Palette, Save, Brain, Image, Volume2, RefreshCw, AlertCircle, CheckCircle2, Download, ArrowUpCircle, Key, ExternalLink, Cloud, Upload } from 'lucide-react'
 import { useUpdater } from '../hooks/useUpdater'
+import { useAuth } from '../contexts/AuthContext'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card'
 import { Input } from '../components/ui/input'
@@ -14,10 +16,12 @@ import {
   SelectValue,
 } from '../components/ui/select'
 import { Progress } from '../components/ui/progress'
-import type { AppSettings, VoiceTemplate, PromptModel } from '@shared/types'
+import type { AppSettings, VoiceTemplate, PromptModel, MaskedApiKeys, PushAllResult } from '@shared/types'
 
 export function Settings() {
   const { toast } = useToast()
+  const navigate = useNavigate()
+  const { isAdmin } = useAuth()
   const [settings, setSettings] = React.useState<AppSettings | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [saving, setSaving] = React.useState(false)
@@ -26,6 +30,15 @@ export function Settings() {
   const [voiceTemplates, setVoiceTemplates] = React.useState<VoiceTemplate[]>([])
   const [loadingTemplates, setLoadingTemplates] = React.useState(false)
   const [voiceBalance, setVoiceBalance] = React.useState<number | null>(null)
+
+  // Masked API keys for editors
+  const [maskedKeys, setMaskedKeys] = React.useState<MaskedApiKeys | null>(null)
+  const [keyStatus, setKeyStatus] = React.useState<Record<string, boolean>>({})
+  const [loadingKeys, setLoadingKeys] = React.useState(false)
+
+  // Cloud sync state (admin only)
+  const [isPushing, setIsPushing] = React.useState(false)
+  const [pushResult, setPushResult] = React.useState<PushAllResult | null>(null)
 
   // Updater state
   const {
@@ -42,7 +55,27 @@ export function Settings() {
 
   React.useEffect(() => {
     loadSettings()
-  }, [])
+    // Load masked API keys for editors
+    if (!isAdmin) {
+      loadMaskedKeys()
+    }
+  }, [isAdmin])
+
+  const loadMaskedKeys = async () => {
+    setLoadingKeys(true)
+    try {
+      const [masked, status] = await Promise.all([
+        window.api.apiKeys.getMasked(),
+        window.api.apiKeys.getStatus(),
+      ])
+      setMaskedKeys(masked)
+      setKeyStatus(status)
+    } catch (error) {
+      console.error('Failed to load API keys:', error)
+    } finally {
+      setLoadingKeys(false)
+    }
+  }
 
   const loadSettings = async () => {
     try {
@@ -64,14 +97,19 @@ export function Settings() {
   }
 
   const handleFetchVoiceTemplates = async () => {
-    if (!settings?.apiKeys.voiceApi) {
-      toast({ title: 'Error', description: 'Please enter Voice API key first', variant: 'destructive' })
+    // Voice API key is now managed centrally - check if it's configured
+    if (!isAdmin && !keyStatus.voiceApi) {
+      toast({ title: 'Error', description: 'Voice API key not configured by administrator', variant: 'destructive' })
       return
     }
 
     setLoadingTemplates(true)
     try {
-      const result = await window.api.settings.fetchVoiceTemplates(settings.apiKeys.voiceApi)
+      // For admins with local key, use that; otherwise the backend will use the cached key
+      const voiceApiKey = isAdmin && settings?.apiKeys?.voiceApi
+        ? settings.apiKeys.voiceApi
+        : '' // Empty string signals to use cached/cloud key
+      const result = await window.api.settings.fetchVoiceTemplates(voiceApiKey)
       setVoiceTemplates(result.templates)
       if (result.balance !== undefined) {
         setVoiceBalance(result.balance)
@@ -79,7 +117,7 @@ export function Settings() {
       toast({ title: 'Success', description: `Loaded ${result.templates.length} voice templates`, variant: 'success' })
     } catch (error) {
       console.error('Failed to fetch voice templates:', error)
-      toast({ title: 'Error', description: 'Failed to fetch voice templates. Check your API key.', variant: 'destructive' })
+      toast({ title: 'Error', description: 'Failed to fetch voice templates. Check API key configuration.', variant: 'destructive' })
     } finally {
       setLoadingTemplates(false)
     }
@@ -100,21 +138,26 @@ export function Settings() {
     }
   }
 
-  // Helper to detect which prompt provider is configured
-  const getPromptProvider = (): 'anthropic' | 'openai' | 'none' => {
-    if (settings?.apiKeys.anthropicApi) return 'anthropic'
-    if (settings?.apiKeys.openaiApi) return 'openai'
-    return 'none'
-  }
-
-  // Helper to validate API key format
-  const validateKeyFormat = (key: string, type: 'anthropic' | 'openai' | 'replicate'): boolean => {
-    if (!key) return true // Empty is valid (not configured)
-    switch (type) {
-      case 'anthropic': return key.startsWith('sk-ant-')
-      case 'openai': return key.startsWith('sk-') && !key.startsWith('sk-ant-')
-      case 'replicate': return key.startsWith('r8_')
-      default: return true
+  const handlePushToCloud = async () => {
+    setIsPushing(true)
+    setPushResult(null)
+    try {
+      const result = await window.api.cloudSync.pushAll()
+      setPushResult(result)
+      if (result.success) {
+        toast({ title: 'Success', description: 'All data synced to cloud', variant: 'success' })
+      } else {
+        toast({
+          title: 'Warning',
+          description: `Sync completed with ${result.categoriesFailed + result.channelsFailed} errors`,
+          variant: 'destructive'
+        })
+      }
+    } catch (error) {
+      console.error('Failed to push to cloud:', error)
+      toast({ title: 'Error', description: 'Failed to sync to cloud', variant: 'destructive' })
+    } finally {
+      setIsPushing(false)
     }
   }
 
@@ -160,7 +203,184 @@ export function Settings() {
         </CardContent>
       </Card>
 
-      {/* Prompt Generation */}
+      {/* API Keys Section - Different for Admin vs Editor */}
+      {isAdmin ? (
+        /* Admin: Link to API Keys management page */
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Key className="w-4 h-4" />
+              API Keys
+            </CardTitle>
+            <CardDescription>
+              Manage API keys for all users from the admin panel
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button onClick={() => navigate('/admin/api-keys')} className="gap-2">
+              <ExternalLink className="w-4 h-4" />
+              Manage API Keys
+            </Button>
+            <p className="text-xs text-text-tertiary mt-2">
+              API keys you configure will be automatically synced to all editors
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        /* Editor: Show masked API keys (read-only) */
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Key className="w-4 h-4" />
+              API Keys
+            </CardTitle>
+            <CardDescription>
+              API keys are managed by your administrator
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {loadingKeys ? (
+              <div className="flex items-center justify-center py-4">
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              </div>
+            ) : (
+              <>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-3 bg-bg-elevated rounded-lg">
+                    <div>
+                      <Label className="text-sm">Anthropic API (Claude)</Label>
+                      <p className="text-xs text-text-tertiary font-mono mt-1">
+                        {maskedKeys?.anthropicApi || 'Not configured'}
+                      </p>
+                    </div>
+                    {keyStatus.anthropicApi ? (
+                      <CheckCircle2 className="w-4 h-4 text-green-500" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 text-text-tertiary" />
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between p-3 bg-bg-elevated rounded-lg">
+                    <div>
+                      <Label className="text-sm">OpenAI API</Label>
+                      <p className="text-xs text-text-tertiary font-mono mt-1">
+                        {maskedKeys?.openaiApi || 'Not configured'}
+                      </p>
+                    </div>
+                    {keyStatus.openaiApi ? (
+                      <CheckCircle2 className="w-4 h-4 text-green-500" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 text-text-tertiary" />
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between p-3 bg-bg-elevated rounded-lg">
+                    <div>
+                      <Label className="text-sm">Replicate API</Label>
+                      <p className="text-xs text-text-tertiary font-mono mt-1">
+                        {maskedKeys?.replicateApi || 'Not configured'}
+                      </p>
+                    </div>
+                    {keyStatus.replicateApi ? (
+                      <CheckCircle2 className="w-4 h-4 text-green-500" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 text-text-tertiary" />
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between p-3 bg-bg-elevated rounded-lg">
+                    <div>
+                      <Label className="text-sm">Voice API</Label>
+                      <p className="text-xs text-text-tertiary font-mono mt-1">
+                        {maskedKeys?.voiceApi || 'Not configured'}
+                      </p>
+                    </div>
+                    {keyStatus.voiceApi ? (
+                      <CheckCircle2 className="w-4 h-4 text-green-500" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 text-text-tertiary" />
+                    )}
+                  </div>
+                </div>
+                <Button variant="outline" onClick={loadMaskedKeys} className="gap-2 w-full">
+                  <RefreshCw className="w-4 h-4" />
+                  Refresh Keys
+                </Button>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Cloud Sync Section - Admin only */}
+      {isAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Cloud className="w-4 h-4" />
+              Cloud Sync
+            </CardTitle>
+            <CardDescription>
+              Sync your categories and channels to the cloud for editors
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium">Push All to Cloud</p>
+                <p className="text-xs text-text-tertiary">
+                  Upload all categories and channels to Supabase
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                onClick={handlePushToCloud}
+                disabled={isPushing}
+                className="gap-2"
+              >
+                {isPushing ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Upload className="w-4 h-4" />
+                )}
+                {isPushing ? 'Syncing...' : 'Sync to Cloud'}
+              </Button>
+            </div>
+
+            {/* Push Result Display */}
+            {pushResult && (
+              <div className={`rounded-md p-3 ${pushResult.success ? 'bg-green-500/10' : 'bg-amber-500/10'}`}>
+                <div className="flex items-center gap-2 mb-2">
+                  {pushResult.success ? (
+                    <CheckCircle2 className="w-4 h-4 text-green-600" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-amber-600" />
+                  )}
+                  <span className={`text-sm font-medium ${pushResult.success ? 'text-green-600' : 'text-amber-600'}`}>
+                    {pushResult.success ? 'Sync Complete' : 'Sync Completed with Errors'}
+                  </span>
+                </div>
+                <div className="text-xs text-text-secondary space-y-1">
+                  <p>Categories: {pushResult.categoriesPushed} synced, {pushResult.categoriesFailed} failed</p>
+                  <p>Channels: {pushResult.channelsPushed} synced, {pushResult.channelsFailed} failed</p>
+                </div>
+                {pushResult.errors.length > 0 && (
+                  <div className="mt-2 text-xs text-red-500">
+                    {pushResult.errors.slice(0, 3).map((err, i) => (
+                      <p key={i}>{err}</p>
+                    ))}
+                    {pushResult.errors.length > 3 && (
+                      <p>...and {pushResult.errors.length - 3} more errors</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Prompt Model Selection (visible for all) */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
@@ -168,76 +388,10 @@ export function Settings() {
             Prompt Generation
           </CardTitle>
           <CardDescription>
-            Configure AI for generating image prompts from scripts
+            Configure the AI model for generating image prompts
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label>Anthropic API Key (Claude)</Label>
-            <div className="relative">
-              <Input
-                type="password"
-                value={settings.apiKeys.anthropicApi || ''}
-                onChange={(e) =>
-                  setSettings({
-                    ...settings,
-                    apiKeys: { ...settings.apiKeys, anthropicApi: e.target.value },
-                  })
-                }
-                placeholder="sk-ant-..."
-                className={!validateKeyFormat(settings.apiKeys.anthropicApi || '', 'anthropic') ? 'border-red-500' : ''}
-              />
-              {settings.apiKeys.anthropicApi && (
-                <span className="absolute right-3 top-1/2 -translate-y-1/2">
-                  {validateKeyFormat(settings.apiKeys.anthropicApi, 'anthropic') ? (
-                    <CheckCircle2 className="w-4 h-4 text-green-500" />
-                  ) : (
-                    <AlertCircle className="w-4 h-4 text-red-500" />
-                  )}
-                </span>
-              )}
-            </div>
-            <p className="text-xs text-text-tertiary">
-              For Claude models (recommended for best prompts)
-            </p>
-          </div>
-
-          <div className="relative flex items-center">
-            <div className="flex-1 border-t border-border" />
-            <span className="px-3 text-xs text-text-tertiary">OR</span>
-            <div className="flex-1 border-t border-border" />
-          </div>
-
-          <div className="space-y-2">
-            <Label>OpenAI API Key</Label>
-            <div className="relative">
-              <Input
-                type="password"
-                value={settings.apiKeys.openaiApi || ''}
-                onChange={(e) =>
-                  setSettings({
-                    ...settings,
-                    apiKeys: { ...settings.apiKeys, openaiApi: e.target.value },
-                  })
-                }
-                placeholder="sk-..."
-                className={!validateKeyFormat(settings.apiKeys.openaiApi || '', 'openai') ? 'border-red-500' : ''}
-              />
-              {settings.apiKeys.openaiApi && (
-                <span className="absolute right-3 top-1/2 -translate-y-1/2">
-                  {validateKeyFormat(settings.apiKeys.openaiApi, 'openai') ? (
-                    <CheckCircle2 className="w-4 h-4 text-green-500" />
-                  ) : (
-                    <AlertCircle className="w-4 h-4 text-red-500" />
-                  )}
-                </span>
-              )}
-            </div>
-            <p className="text-xs text-text-tertiary">
-              Alternative: GPT models for prompt generation
-            </p>
-          </div>
-
           <div className="space-y-2">
             <Label>Prompt Model</Label>
             <Select
@@ -261,17 +415,10 @@ export function Settings() {
               Model used for generating oil painting prompts
             </p>
           </div>
-
-          {getPromptProvider() !== 'none' && (
-            <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
-              <CheckCircle2 className="w-4 h-4" />
-              Using {getPromptProvider() === 'anthropic' ? 'Anthropic (Claude)' : 'OpenAI (GPT)'}
-            </div>
-          )}
         </CardContent>
       </Card>
 
-      {/* Image Generation */}
+      {/* Image Generation Settings */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
@@ -279,40 +426,10 @@ export function Settings() {
             Image Generation
           </CardTitle>
           <CardDescription>
-            Configure Replicate API for generating images
+            Configure image generation settings
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label>Replicate API Key</Label>
-            <div className="relative">
-              <Input
-                type="password"
-                value={settings.apiKeys.replicateApi || ''}
-                onChange={(e) =>
-                  setSettings({
-                    ...settings,
-                    apiKeys: { ...settings.apiKeys, replicateApi: e.target.value },
-                  })
-                }
-                placeholder="r8_..."
-                className={!validateKeyFormat(settings.apiKeys.replicateApi || '', 'replicate') ? 'border-red-500' : ''}
-              />
-              {settings.apiKeys.replicateApi && (
-                <span className="absolute right-3 top-1/2 -translate-y-1/2">
-                  {validateKeyFormat(settings.apiKeys.replicateApi, 'replicate') ? (
-                    <CheckCircle2 className="w-4 h-4 text-green-500" />
-                  ) : (
-                    <AlertCircle className="w-4 h-4 text-red-500" />
-                  )}
-                </span>
-              )}
-            </div>
-            <p className="text-xs text-text-tertiary">
-              Used for image generation and subtitle transcription (WhisperX)
-            </p>
-          </div>
-
           <div className="space-y-2">
             <Label>Max Concurrent Images</Label>
             <div className="flex items-center gap-4">
@@ -348,24 +465,6 @@ export function Settings() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label>Voice API Key</Label>
-            <Input
-              type="password"
-              value={settings.apiKeys.voiceApi || ''}
-              onChange={(e) =>
-                setSettings({
-                  ...settings,
-                  apiKeys: { ...settings.apiKeys, voiceApi: e.target.value },
-                })
-              }
-              placeholder="Enter your Voice API key"
-            />
-            <p className="text-xs text-text-tertiary">
-              API key for voiceapi.csv666.ru TTS service
-            </p>
-          </div>
-
-          <div className="space-y-2">
             <Label>Voice Template</Label>
             <div className="flex gap-2">
               <Select
@@ -389,7 +488,7 @@ export function Settings() {
               <Button
                 variant="outline"
                 onClick={handleFetchVoiceTemplates}
-                disabled={loadingTemplates || !settings.apiKeys.voiceApi}
+                disabled={loadingTemplates || (!isAdmin && !keyStatus.voiceApi)}
                 className="gap-2"
               >
                 <RefreshCw className={`w-4 h-4 ${loadingTemplates ? 'animate-spin' : ''}`} />
@@ -399,6 +498,11 @@ export function Settings() {
             {voiceBalance !== null && (
               <p className="text-xs text-green-600 dark:text-green-400">
                 Balance: {voiceBalance.toLocaleString()} credits
+              </p>
+            )}
+            {!isAdmin && !keyStatus.voiceApi && (
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                Voice API key not configured. Contact your administrator.
               </p>
             )}
           </div>

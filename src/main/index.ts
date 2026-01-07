@@ -65,8 +65,8 @@ async function createWindow() {
     },
   })
 
-  // Register IPC handlers
-  registerAllIpcHandlers()
+  // Register IPC handlers (with mainWindow for handlers that need it)
+  registerAllIpcHandlers(mainWindow)
 
   // Start the queue manager to process any pending tasks
   try {

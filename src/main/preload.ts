@@ -40,6 +40,12 @@ import type {
   ProgressInfo,
   CheckForUpdatesResult,
   DownloadResult,
+  ApiKeyType,
+  ApiKeysConfig,
+  MaskedApiKeys,
+  CloudSyncStatus,
+  CloudSyncVersions,
+  PushAllResult,
 } from '../shared/types'
 
 // Expose protected methods that allow the renderer process to use
@@ -330,6 +336,52 @@ const api = {
       const handler = (_: unknown, error: string) => callback(error)
       ipcRenderer.on(IPC_CHANNELS.UPDATER.ON_ERROR, handler)
       return () => ipcRenderer.removeListener(IPC_CHANNELS.UPDATER.ON_ERROR, handler)
+    },
+  },
+
+  // API Keys (Centralized management)
+  apiKeys: {
+    getAll: (): Promise<ApiKeysConfig | MaskedApiKeys> =>
+      ipcRenderer.invoke(IPC_CHANNELS.API_KEYS.GET_ALL),
+    getMasked: (): Promise<MaskedApiKeys> =>
+      ipcRenderer.invoke(IPC_CHANNELS.API_KEYS.GET_MASKED),
+    getStatus: (): Promise<Record<ApiKeyType, boolean>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.API_KEYS.GET_STATUS),
+    set: (keyType: ApiKeyType, value: string): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.API_KEYS.SET, keyType, value),
+    delete: (keyType: ApiKeyType): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.API_KEYS.DELETE, keyType),
+    refreshCache: (): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.API_KEYS.REFRESH_CACHE),
+  },
+
+  // Cloud Sync (Categories/Channels synchronization)
+  cloudSync: {
+    checkForUpdates: (): Promise<{
+      needsSync: boolean
+      cloudVersions: CloudSyncVersions | null
+      localVersions: CloudSyncVersions
+    }> => ipcRenderer.invoke(IPC_CHANNELS.CLOUD_SYNC.CHECK_FOR_UPDATES),
+    pullAll: (): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CLOUD_SYNC.PULL_ALL),
+    pullCategories: (): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CLOUD_SYNC.PULL_CATEGORIES),
+    pullChannels: (): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CLOUD_SYNC.PULL_CHANNELS),
+    pushAll: (): Promise<PushAllResult> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CLOUD_SYNC.PUSH_ALL),
+    getStatus: (): Promise<CloudSyncStatus> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CLOUD_SYNC.GET_STATUS),
+    // Real-time event listeners
+    onSyncComplete: (callback: () => void) => {
+      const handler = () => callback()
+      ipcRenderer.on(IPC_CHANNELS.CLOUD_SYNC.ON_SYNC_COMPLETE, handler)
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.CLOUD_SYNC.ON_SYNC_COMPLETE, handler)
+    },
+    onSyncError: (callback: (error: string) => void) => {
+      const handler = (_: unknown, error: string) => callback(error)
+      ipcRenderer.on(IPC_CHANNELS.CLOUD_SYNC.ON_SYNC_ERROR, handler)
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.CLOUD_SYNC.ON_SYNC_ERROR, handler)
     },
   },
 }

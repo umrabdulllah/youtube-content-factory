@@ -18,6 +18,7 @@ import { Login } from './pages/Login'
 import { Register } from './pages/Register'
 import { UserManagement } from './pages/UserManagement'
 import { AdminDashboard } from './pages/AdminDashboard'
+import { AdminApiKeys } from './pages/AdminApiKeys'
 import { Toaster } from './components/ui/toaster'
 import { UpdateNotification } from './components/UpdateNotification'
 
@@ -123,6 +124,14 @@ function App() {
                           element={
                             <ProtectedRoute requireAdmin>
                               <AdminDashboard />
+                            </ProtectedRoute>
+                          }
+                        />
+                        <Route
+                          path="/admin/api-keys"
+                          element={
+                            <ProtectedRoute requireAdmin>
+                              <AdminApiKeys />
                             </ProtectedRoute>
                           }
                         />

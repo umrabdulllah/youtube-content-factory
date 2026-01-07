@@ -146,4 +146,27 @@ export const IPC_CHANNELS = {
     ON_UPDATE_DOWNLOADED: 'updater:onUpdateDownloaded',
     ON_ERROR: 'updater:onError',
   },
+
+  // API Keys (Centralized management)
+  API_KEYS: {
+    GET_ALL: 'apiKeys:getAll', // Admin: full values, Editor: masked
+    GET_MASKED: 'apiKeys:getMasked', // Always returns masked values
+    GET_STATUS: 'apiKeys:getStatus', // Returns which keys are configured
+    SET: 'apiKeys:set', // Admin only
+    DELETE: 'apiKeys:delete', // Admin only
+    REFRESH_CACHE: 'apiKeys:refreshCache', // Force re-fetch from cloud
+  },
+
+  // Cloud Sync (Categories/Channels/API Keys synchronization)
+  CLOUD_SYNC: {
+    CHECK_FOR_UPDATES: 'cloudSync:checkForUpdates',
+    PULL_ALL: 'cloudSync:pullAll', // Sync categories and channels from cloud
+    PULL_CATEGORIES: 'cloudSync:pullCategories',
+    PULL_CHANNELS: 'cloudSync:pullChannels',
+    PUSH_ALL: 'cloudSync:pushAll', // Admin: push all categories and channels to cloud
+    GET_STATUS: 'cloudSync:getStatus',
+    // Real-time events
+    ON_SYNC_COMPLETE: 'cloudSync:onSyncComplete',
+    ON_SYNC_ERROR: 'cloudSync:onSyncError',
+  },
 } as const
