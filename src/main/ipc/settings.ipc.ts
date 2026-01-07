@@ -3,6 +3,7 @@ import { IPC_CHANNELS } from '../../shared/ipc-channels'
 import * as settingsQueries from '../database/queries/settings'
 import { validateBasePath } from '../utils/path-validation'
 import { handleIpcError } from '../utils/ipc-error-handler'
+import { getApiKey } from '../services/api-keys.service'
 import type { AppSettings, VoiceTemplate } from '../../shared/types'
 
 const VOICE_API_BASE_URL = 'https://voiceapi.csv666.ru'
@@ -94,7 +95,12 @@ export function registerSettingsHandlers(): void {
   // Fetch voice templates from the Russian TTS API
   ipcMain.handle(IPC_CHANNELS.SETTINGS.FETCH_VOICE_TEMPLATES, async (_, apiKey: string) => {
     return handleIpcError(async () => {
-      if (!apiKey) {
+      // Use provided key or fall back to cached cloud key for editors
+      let effectiveKey = apiKey
+      if (!effectiveKey) {
+        effectiveKey = await getApiKey('voiceApi') || ''
+      }
+      if (!effectiveKey) {
         throw new Error('API key is required')
       }
 
@@ -102,7 +108,7 @@ export function registerSettingsHandlers(): void {
       const templatesResponse = await fetch(`${VOICE_API_BASE_URL}/templates`, {
         method: 'GET',
         headers: {
-          'X-API-Key': apiKey,
+          'X-API-Key': effectiveKey,
         },
       })
 
@@ -128,7 +134,7 @@ export function registerSettingsHandlers(): void {
         const balanceResponse = await fetch(`${VOICE_API_BASE_URL}/balance`, {
           method: 'GET',
           headers: {
-            'X-API-Key': apiKey,
+            'X-API-Key': effectiveKey,
           },
         })
 
@@ -148,14 +154,19 @@ export function registerSettingsHandlers(): void {
   // Check voice API balance
   ipcMain.handle(IPC_CHANNELS.SETTINGS.CHECK_VOICE_BALANCE, async (_, apiKey: string) => {
     return handleIpcError(async () => {
-      if (!apiKey) {
+      // Use provided key or fall back to cached cloud key for editors
+      let effectiveKey = apiKey
+      if (!effectiveKey) {
+        effectiveKey = await getApiKey('voiceApi') || ''
+      }
+      if (!effectiveKey) {
         throw new Error('API key is required')
       }
 
       const response = await fetch(`${VOICE_API_BASE_URL}/balance`, {
         method: 'GET',
         headers: {
-          'X-API-Key': apiKey,
+          'X-API-Key': effectiveKey,
         },
       })
 
