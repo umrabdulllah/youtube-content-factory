@@ -23,11 +23,36 @@ npm run electron:build
 
 # Build Vite only (no Electron)
 npm run build:vite
+```
 
-# Release (builds and publishes to GitHub)
-npm run release           # All platforms
-npm run release:mac       # macOS only
-npm run release:win       # Windows only
+## Releasing
+
+**IMPORTANT:** All releases must be built for both Windows and macOS via GitHub Actions.
+
+**Do NOT run `npm run release` locally** - it only builds for the current platform and can cause conflicts with GitHub releases.
+
+### Release Process
+
+1. Bump version in `package.json`
+2. Commit changes: `git add -A && git commit -m "Your message"`
+3. Push to origin: `git push origin master`
+4. Create and push a version tag:
+   ```bash
+   git tag v1.x.x
+   git push origin v1.x.x
+   ```
+5. GitHub Actions (`.github/workflows/release.yml`) automatically:
+   - Builds for macOS (arm64)
+   - Builds for Windows (x64)
+   - Publishes both to GitHub Releases
+   - Generates auto-update files (`latest.yml`, `latest-mac.yml`)
+
+### Monitoring Release
+
+```bash
+gh run list --limit 3          # Check workflow status
+gh run watch <run-id>          # Watch build progress
+gh release view v1.x.x         # Verify release assets
 ```
 
 ## Architecture
