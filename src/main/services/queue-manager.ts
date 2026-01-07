@@ -18,6 +18,7 @@ import {
   type SubtitleGenerationOutput,
 } from './generation'
 import { generatePrompts } from './generation/prompt-generation.service'
+import { getApiKey } from './api-keys.service'
 import type { QueueTask, TaskStatus, TaskType } from '@shared/types'
 
 // ============================================
@@ -394,7 +395,7 @@ class QueueManager {
     }
 
     const appSettings = settingsQueries.getSettings()
-    const apiKey = appSettings.apiKeys.anthropicApi || appSettings.apiKeys.openaiApi
+    const apiKey = await getApiKey('anthropicApi') || await getApiKey('openaiApi')
 
     if (!apiKey) {
       throw new Error('No API key configured for prompt generation (Anthropic or OpenAI)')
@@ -446,10 +447,10 @@ class QueueManager {
     }
 
     const appSettings = settingsQueries.getSettings()
-    const voiceApiKey = appSettings.apiKeys.voiceApi
+    const voiceApiKey = await getApiKey('voiceApi')
     const templateId = appSettings.voiceTemplateId
 
-    const audioService = createAudioService(voiceApiKey, templateId)
+    const audioService = createAudioService(voiceApiKey ?? undefined, templateId)
     const result = await audioService.generate(
       {
         projectId: project.id,
@@ -512,9 +513,9 @@ class QueueManager {
     }
 
     const appSettings = settingsQueries.getSettings()
-    const replicateApiKey = appSettings.apiKeys.replicateApi
+    const replicateApiKey = await getApiKey('replicateApi')
 
-    const imageService = createImageService(replicateApiKey)
+    const imageService = createImageService(replicateApiKey ?? undefined)
     const result = await imageService.generate(
       {
         projectId: project.id,

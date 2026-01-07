@@ -2,6 +2,7 @@ import * as React from 'react'
 import { Clock, RefreshCw, CheckCircle2, XCircle } from 'lucide-react'
 import { Sidebar } from './Sidebar'
 import { Header } from './Header'
+import { usePlatform } from '@renderer/hooks/usePlatform'
 import type { QueueStats } from '@shared/types'
 
 interface AppLayoutProps {
@@ -9,6 +10,7 @@ interface AppLayoutProps {
 }
 
 export function AppLayout({ children }: AppLayoutProps) {
+  const { formatShortcut } = usePlatform()
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false)
   const [queueStats, setQueueStats] = React.useState<QueueStats | null>(null)
 
@@ -93,11 +95,11 @@ export function AppLayout({ children }: AppLayoutProps) {
 
             <div className="flex items-center gap-4">
               <span>
-                <kbd className="px-1 py-0.5 bg-bg-elevated rounded text-[9px] border border-border">⌘K</kbd>
+                <kbd className="px-1 py-0.5 bg-bg-elevated rounded text-[9px] border border-border">{formatShortcut('K')}</kbd>
                 {' '}Search
               </span>
               <span>
-                <kbd className="px-1 py-0.5 bg-bg-elevated rounded text-[9px] border border-border">⌘N</kbd>
+                <kbd className="px-1 py-0.5 bg-bg-elevated rounded text-[9px] border border-border">{formatShortcut('N')}</kbd>
                 {' '}New
               </span>
             </div>

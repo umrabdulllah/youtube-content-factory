@@ -631,7 +631,7 @@ export function ProjectDetail() {
                       </span>
                     </div>
                     <Progress
-                      value={project.generationProgress.subtitles.status === 'completed' ? 100 : 0}
+                      value={project.generationProgress.subtitles.status === 'complete' ? 100 : 0}
                     />
                   </div>
                 )}

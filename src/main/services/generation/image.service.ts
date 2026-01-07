@@ -185,7 +185,7 @@ export class MockImageService implements ImageGenerationService {
     await fs.mkdir(imagesDir, { recursive: true })
 
     // Parse script into segments
-    const segments = parseScriptIntoSegments(script)
+    const segments = parseScriptIntoSegments(script || '')
     const total = segments.length
     const images: string[] = []
     const prompts: string[] = []

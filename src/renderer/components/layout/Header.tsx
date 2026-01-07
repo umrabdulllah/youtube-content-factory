@@ -2,6 +2,7 @@ import * as React from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Search, Command, FolderKanban, Tv, FileVideo, Loader2, Settings, Wallet } from 'lucide-react'
 import { cn } from '@renderer/lib/utils'
+import { usePlatform } from '@renderer/hooks/usePlatform'
 
 interface SearchResult {
   type: 'category' | 'channel' | 'project'
@@ -21,6 +22,7 @@ interface SearchResults {
 export function Header() {
   const location = useLocation()
   const navigate = useNavigate()
+  const { isMac } = usePlatform()
   const [searchOpen, setSearchOpen] = React.useState(false)
   const [searchQuery, setSearchQuery] = React.useState('')
   const [searchResults, setSearchResults] = React.useState<SearchResults | null>(null)
@@ -183,7 +185,7 @@ export function Header() {
           <span className="flex-1 text-left">Search...</span>
           <div className="flex items-center gap-0.5">
             <kbd className="px-1 py-0.5 bg-bg-surface rounded text-[9px] border border-border">
-              <Command className="w-2.5 h-2.5 inline" />
+              {isMac ? <Command className="w-2.5 h-2.5 inline" /> : 'Ctrl'}
             </kbd>
             <kbd className="px-1 py-0.5 bg-bg-surface rounded text-[9px] border border-border">K</kbd>
           </div>
