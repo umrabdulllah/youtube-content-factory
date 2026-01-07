@@ -292,6 +292,44 @@ class QueueManager {
       return
     }
 
+    // Detect credit error - emit admin notification and fail immediately (no retry)
+    if (errorMessage.startsWith('CREDIT_ERROR:')) {
+      const cleanError = errorMessage.replace('CREDIT_ERROR: ', '')
+      console.error('[QueueManager] CRITICAL: Replicate credit issue detected')
+
+      // Emit notification to all windows (admin panel)
+      BrowserWindow.getAllWindows().forEach(win => {
+        if (!win.isDestroyed()) {
+          win.webContents.send(IPC_CHANNELS.SYSTEM.ON_CREDIT_ALERT, {
+            type: 'replicate_credit',
+            message: 'Replicate API has insufficient credit (<$5). Image generation stopped.',
+            timestamp: new Date().toISOString(),
+          })
+        }
+      })
+
+      // Mark task as failed with clear message (no retry)
+      queueQueries.updateTaskStatus(task.id, 'failed', cleanError, errorStack)
+      emitStatusChange(task.id, 'failed', cleanError)
+
+      // Cancel remaining pending image tasks for this project
+      const allTasks = queueQueries.getQueueTasksByProject(task.projectId)
+      for (const t of allTasks) {
+        if (t.id !== task.id && t.taskType === 'images' && t.status === 'pending') {
+          queueQueries.updateTaskStatus(t.id, 'cancelled', 'Cancelled due to insufficient Replicate credit')
+          emitStatusChange(t.id, 'cancelled', 'Cancelled due to insufficient Replicate credit')
+        }
+      }
+
+      // Update project status
+      projectsQueries.setProjectError(task.projectId, cleanError, {
+        taskType: task.taskType,
+        stack: errorStack,
+      })
+
+      return // Don't retry
+    }
+
     // Check for retry
     const updatedTask = queueQueries.getQueueTaskById(task.id)
     if (updatedTask && updatedTask.attempts < updatedTask.maxAttempts) {

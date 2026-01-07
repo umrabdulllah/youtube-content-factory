@@ -341,14 +341,22 @@ async function generateSingleImage(
 
       return { success: true }
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
       console.error(`[Image Gen] Attempt ${attempt}/${MAX_RETRIES} failed:`, error)
+
+      // Detect credit-related rate limit (stop immediately, don't retry)
+      if (errorMessage.includes('less than $5') ||
+          (errorMessage.includes('429') && errorMessage.includes('credit'))) {
+        console.error('[Image Gen] CRITICAL: Replicate account has insufficient credit')
+        throw new Error('CREDIT_ERROR: Replicate account has less than $5 credit. Please add funds to continue.')
+      }
 
       if (attempt < MAX_RETRIES) {
         await sleep(RETRY_DELAY_MS * attempt)
       } else {
         return {
           success: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
+          error: errorMessage,
         }
       }
     }
@@ -453,32 +461,44 @@ export class ReplicateImageService implements ImageGenerationService {
       const outputPath = path.join(imagesDir, filename)
 
       const task = (async () => {
-        const result = await generateSingleImage({
-          prompt,
-          index: i,
-          outputPath,
-          replicate,
-          signal,
-          aspectRatio: DEFAULT_ASPECT_RATIO,
-        })
+        try {
+          const result = await generateSingleImage({
+            prompt,
+            index: i,
+            outputPath,
+            replicate,
+            signal,
+            aspectRatio: DEFAULT_ASPECT_RATIO,
+          })
 
-        if (result.success) {
-          results.push({ index: i, success: true, path: outputPath })
-          completed++
-        } else {
+          if (result.success) {
+            results.push({ index: i, success: true, path: outputPath })
+            completed++
+          } else {
+            results.push({ index: i, success: false })
+            failed++
+            failedIndices.push(i)
+            console.error(`[Image Gen] Image ${i + 1} failed: ${result.error}`)
+          }
+
+          // Report progress
+          const percentage = Math.round(((completed + failed) / total) * 100)
+          onProgress({
+            percentage,
+            message: `Generated ${completed} of ${total} images${failed > 0 ? ` (${failed} failed)` : ''}`,
+            details: { total, completed, failed, currentFile: filename, activeWorkers: processing.length, maxWorkers: maxConcurrent },
+          })
+        } catch (error) {
+          // Re-throw credit errors to stop the entire process
+          if (error instanceof Error && error.message.startsWith('CREDIT_ERROR:')) {
+            throw error
+          }
+          // Handle other unexpected errors
           results.push({ index: i, success: false })
           failed++
           failedIndices.push(i)
-          console.error(`[Image Gen] Image ${i + 1} failed: ${result.error}`)
+          console.error(`[Image Gen] Image ${i + 1} failed unexpectedly:`, error)
         }
-
-        // Report progress
-        const percentage = Math.round(((completed + failed) / total) * 100)
-        onProgress({
-          percentage,
-          message: `Generated ${completed} of ${total} images${failed > 0 ? ` (${failed} failed)` : ''}`,
-          details: { total, completed, failed, currentFile: filename, activeWorkers: processing.length, maxWorkers: maxConcurrent },
-        })
       })()
 
       processing.push(task)

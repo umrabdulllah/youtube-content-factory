@@ -384,6 +384,15 @@ const api = {
       return () => ipcRenderer.removeListener(IPC_CHANNELS.CLOUD_SYNC.ON_SYNC_ERROR, handler)
     },
   },
+
+  // System Alerts (Critical errors, credit issues, etc.)
+  system: {
+    onCreditAlert: (callback: (data: { type: string; message: string; timestamp: string }) => void) => {
+      const handler = (_: unknown, data: { type: string; message: string; timestamp: string }) => callback(data)
+      ipcRenderer.on(IPC_CHANNELS.SYSTEM.ON_CREDIT_ALERT, handler)
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.SYSTEM.ON_CREDIT_ALERT, handler)
+    },
+  },
 }
 
 // Expose the API to the renderer process

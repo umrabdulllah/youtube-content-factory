@@ -169,4 +169,9 @@ export const IPC_CHANNELS = {
     ON_SYNC_COMPLETE: 'cloudSync:onSyncComplete',
     ON_SYNC_ERROR: 'cloudSync:onSyncError',
   },
+
+  // System Alerts (Critical errors, credit issues, etc.)
+  SYSTEM: {
+    ON_CREDIT_ALERT: 'system:onCreditAlert',
+  },
 } as const

@@ -8,6 +8,8 @@ import {
   Clock,
   RefreshCw,
   AlertCircle,
+  AlertTriangle,
+  X,
 } from 'lucide-react'
 import {
   BarChart,
@@ -22,6 +24,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button'
 import { Badge } from '../components/ui/badge'
+import { useToast } from '../components/ui/toaster'
 import { EditorStatusGrid } from '../components/EditorActivityCard'
 import type { AdminDashboardData, ActivityLog, ActivityEventType } from '@shared/types'
 
@@ -96,6 +99,23 @@ export function AdminDashboard() {
   const [loading, setLoading] = React.useState(true)
   const [refreshing, setRefreshing] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
+  const [creditAlert, setCreditAlert] = React.useState<string | null>(null)
+  const { toast } = useToast()
+
+  // Listen for credit alerts from main process
+  React.useEffect(() => {
+    const unsubscribe = window.api.system.onCreditAlert((alertData) => {
+      setCreditAlert(alertData.message)
+      toast({
+        title: 'API Credit Alert',
+        description: alertData.message,
+        variant: 'destructive',
+      })
+    })
+    return () => {
+      unsubscribe()
+    }
+  }, [toast])
 
   const loadData = React.useCallback(async () => {
     try {
@@ -151,6 +171,20 @@ export function AdminDashboard() {
 
   return (
     <div className="space-y-6">
+      {/* Credit Alert Banner */}
+      {creditAlert && (
+        <div className="bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-3 rounded-lg flex items-center gap-3">
+          <AlertTriangle className="h-5 w-5 flex-shrink-0" />
+          <span className="flex-1 text-sm">{creditAlert}</span>
+          <button
+            onClick={() => setCreditAlert(null)}
+            className="p-1 hover:bg-red-500/20 rounded transition-colors"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
