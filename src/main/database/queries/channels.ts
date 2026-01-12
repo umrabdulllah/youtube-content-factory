@@ -165,32 +165,3 @@ export function deleteChannel(id: string): void {
   const db = getDatabase()
   db.prepare(`DELETE FROM channels WHERE id = ?`).run(id)
 }
-
-export function incrementChannelProjectCount(channelId: string): void {
-  const db = getDatabase()
-  db.prepare(`
-    UPDATE channels SET project_count = project_count + 1, updated_at = ? WHERE id = ?
-  `).run(new Date().toISOString(), channelId)
-}
-
-export function decrementChannelProjectCount(channelId: string): void {
-  const db = getDatabase()
-  db.prepare(`
-    UPDATE channels SET project_count = CASE WHEN project_count > 0 THEN project_count - 1 ELSE 0 END, updated_at = ? WHERE id = ?
-  `).run(new Date().toISOString(), channelId)
-}
-
-export function reorderChannels(categoryId: string, channelIds: string[]): void {
-  const db = getDatabase()
-  const now = new Date().toISOString()
-
-  const stmt = db.prepare(`
-    UPDATE channels SET sort_order = ?, updated_at = ? WHERE id = ? AND category_id = ?
-  `)
-
-  db.transaction(() => {
-    channelIds.forEach((id, index) => {
-      stmt.run(index, now, id, categoryId)
-    })
-  })()
-}

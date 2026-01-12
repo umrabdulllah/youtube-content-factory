@@ -63,7 +63,7 @@ export function initializeSupabase(): SupabaseClient {
         },
         removeItem: (key: string) => {
           try {
-            authStore.delete(key as any)
+            authStore.delete(key as keyof typeof authStore.store)
           } catch (error) {
             console.error('[Supabase] Failed to remove storage item:', error)
           }
@@ -143,13 +143,13 @@ export async function getStoredSession(): Promise<Session | null> {
  */
 export function clearStoredSession(): void {
   try {
-    authStore.delete('secure_session' as any)
-    authStore.delete('session' as any)
+    authStore.delete('secure_session' as keyof typeof authStore.store)
+    authStore.delete('session' as keyof typeof authStore.store)
     // Clear any Supabase auth keys
     const keys = ['sb-' + SUPABASE_URL.split('//')[1]?.split('.')[0] + '-auth-token']
     keys.forEach((key) => {
       try {
-        authStore.delete(key as any)
+        authStore.delete(key as keyof typeof authStore.store)
       } catch {
         // Ignore errors for keys that don't exist
       }

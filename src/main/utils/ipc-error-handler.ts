@@ -35,24 +35,3 @@ export async function handleIpcError<T>(handler: () => Promise<T>): Promise<T> {
     throw new Error(errorMessage)
   }
 }
-
-/**
- * Wraps a sync IPC handler function with consistent error handling.
- * Use for handlers that don't need async operations.
- */
-export function handleIpcErrorSync<T>(handler: () => T): T {
-  try {
-    return handler()
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred'
-    const errorCode = error instanceof Error && 'code' in error ? String(error.code) : undefined
-
-    console.error('[IPC Error]', {
-      message: errorMessage,
-      code: errorCode,
-      stack: error instanceof Error ? error.stack : undefined,
-    })
-
-    throw new Error(errorMessage)
-  }
-}

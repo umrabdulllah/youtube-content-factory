@@ -111,5 +111,4 @@ Configured in `vite.config.ts`:
 Located in `src/renderer/components/ui/`. Uses Radix UI primitives with Tailwind CSS styling. shadcn/ui patterns.
 
 ### State Management
-- Zustand for client-side state
 - React Context for auth (`src/renderer/contexts/AuthContext.tsx`)

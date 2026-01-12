@@ -56,15 +56,6 @@ export function getCategoryById(id: string): Category | null {
   return row ? mapRow(row) : null
 }
 
-export function getCategoryBySlug(slug: string): Category | null {
-  const db = getDatabase()
-  const row = db.prepare(`
-    SELECT * FROM categories WHERE slug = ?
-  `).get(slug) as Record<string, unknown> | undefined
-
-  return row ? mapRow(row) : null
-}
-
 /**
  * Generates a unique slug for a category (globally unique).
  * Appends -2, -3, etc. if the base slug already exists.

@@ -1,17 +1,17 @@
 // Export all generation service types
 export * from './types'
 
-// Export mock services
-export { MockImageService, mockImageService, ReplicateImageService, createImageService } from './image.service'
-export { MockAudioService, mockAudioService, RussianTTSService, createAudioService } from './audio.service'
-export { MockSubtitleService, mockSubtitleService, WhisperXSubtitleService, createSubtitleService } from './subtitle.service'
+// Export services
+export { ReplicateImageService, createImageService } from './image.service'
+export { RussianTTSService, createAudioService } from './audio.service'
+export { WhisperXSubtitleService, createSubtitleService } from './subtitle.service'
 
 // Export prompt generation
 export { generatePrompts } from './prompt-generation.service'
 export type { PromptGenerationInput, PromptGenerationOutput, PromptBatch, PromptProgress } from './prompt-generation.service'
 
 // Export pipeline orchestrator
-export { PipelineOrchestrator, getPipelineOrchestrator, createPipelineOrchestrator } from './pipeline-orchestrator'
+export { PipelineOrchestrator, getPipelineOrchestrator } from './pipeline-orchestrator'
 export type { PipelineInput, PipelineProgress, PipelineResult } from './pipeline-orchestrator'
 
 // Export utilities

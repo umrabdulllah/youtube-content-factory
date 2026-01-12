@@ -163,8 +163,3 @@ app.on('activate', () => {
     createWindow()
   }
 })
-
-// Export for access from other modules
-export function getMainWindow(): BrowserWindow | null {
-  return mainWindow
-}

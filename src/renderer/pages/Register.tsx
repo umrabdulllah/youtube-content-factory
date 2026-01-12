@@ -85,7 +85,7 @@ export function Register() {
         try {
           await login(email.trim(), password)
           navigate('/', { replace: true })
-        } catch (loginError) {
+        } catch (_loginError) {
           // If auto-login fails, redirect to login page
           toast({
             title: 'Account Created',

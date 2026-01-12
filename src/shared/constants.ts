@@ -54,25 +54,3 @@ export const CATEGORY_ICONS = [
   'globe',
   'star',
 ]
-
-// Generation settings
-export const IMAGE_STYLES = [
-  { value: 'cinematic', label: 'Cinematic' },
-  { value: 'illustration', label: 'Illustration' },
-  { value: 'photorealistic', label: 'Photorealistic' },
-  { value: 'anime', label: 'Anime' },
-  { value: 'digital-art', label: 'Digital Art' },
-  { value: 'dramatic', label: 'Dramatic' },
-]
-
-export const LANGUAGES = [
-  { value: 'en', label: 'English' },
-  { value: 'es', label: 'Spanish' },
-  { value: 'fr', label: 'French' },
-  { value: 'de', label: 'German' },
-  { value: 'pt', label: 'Portuguese' },
-  { value: 'it', label: 'Italian' },
-  { value: 'ja', label: 'Japanese' },
-  { value: 'ko', label: 'Korean' },
-  { value: 'zh', label: 'Chinese' },
-]

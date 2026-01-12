@@ -482,7 +482,3 @@ export function getPipelineOrchestrator(): PipelineOrchestrator {
   }
   return orchestratorInstance
 }
-
-export function createPipelineOrchestrator(): PipelineOrchestrator {
-  return new PipelineOrchestrator()
-}
