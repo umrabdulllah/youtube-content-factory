@@ -52,6 +52,8 @@ export function getAllQueueTasks(): QueueTaskWithProject[] {
     JOIN channels ch ON ch.id = p.channel_id
     JOIN categories c ON c.id = ch.category_id
     WHERE q.status IN ('pending', 'processing')
+       OR (q.status IN ('completed', 'failed', 'cancelled')
+           AND q.completed_at > datetime('now', '-5 minutes'))
     ORDER BY q.priority DESC, q.created_at ASC
   `).all() as Record<string, unknown>[]
 

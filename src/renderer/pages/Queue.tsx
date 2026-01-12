@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Clock,
   Cpu,
+  Check,
 } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
@@ -122,10 +123,8 @@ export function Queue() {
         )
       )
 
-      // If task completed or failed, refresh the full list
-      if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled') {
-        loadQueue()
-      }
+      // Refresh stats when status changes (but don't reload task list - let polling handle removal)
+      loadStats()
     })
 
     // Keep polling as fallback
@@ -144,6 +143,15 @@ export function Queue() {
       setPaused(isPaused)
     } catch (error) {
       console.error('Failed to load paused state:', error)
+    }
+  }
+
+  const loadStats = async () => {
+    try {
+      const statsData = await window.api.queue.getStats()
+      setStats(statsData)
+    } catch (error) {
+      console.error('Failed to load stats:', error)
     }
   }
 
@@ -551,9 +559,14 @@ export function Queue() {
                       {/* Prompts */}
                       <div className="flex items-center gap-2 flex-1 min-w-0">
                         <FileText className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                        <Progress value={prompts.progress} className="h-1.5 flex-1" />
-                        <div className="text-xs text-text-secondary shrink-0 text-right min-w-[90px]">
-                          {prompts.prompts ? (
+                        <Progress value={prompts.status === 'complete' ? 100 : prompts.progress} className="h-1.5 flex-1" />
+                        <div className="text-xs text-text-secondary shrink-0 text-right min-w-[60px]">
+                          {prompts.status === 'complete' ? (
+                            <span className="flex items-center justify-end gap-1 text-success">
+                              <Check className="w-3 h-3" />
+                              done
+                            </span>
+                          ) : prompts.prompts ? (
                             <span className="flex items-center justify-end gap-1.5">
                               <span className="text-text-primary">{prompts.prompts.generated}/{prompts.prompts.total}</span>
                               <span className="text-text-tertiary text-[10px]">
@@ -563,8 +576,6 @@ export function Queue() {
                                 <span className="text-blue-400 text-[10px] font-medium">⚡{prompts.activeWorkers}</span>
                               )}
                             </span>
-                          ) : prompts.status === 'complete' ? (
-                            <span className="text-success">done</span>
                           ) : prompts.status === 'pending' ? (
                             <span className="text-text-tertiary">pending</span>
                           ) : (
@@ -576,10 +587,13 @@ export function Queue() {
                       {/* Audio */}
                       <div className="flex items-center gap-2 flex-1 min-w-0">
                         <Music className="w-3.5 h-3.5 text-purple-400 shrink-0" />
-                        <Progress value={audio.progress} className="h-1.5 flex-1" />
-                        <div className="text-xs text-text-secondary shrink-0 text-right min-w-[55px]">
+                        <Progress value={audio.status === 'complete' ? 100 : audio.progress} className="h-1.5 flex-1" />
+                        <div className="text-xs text-text-secondary shrink-0 text-right min-w-[60px]">
                           {audio.status === 'complete' ? (
-                            <span className="text-success">done</span>
+                            <span className="flex items-center justify-end gap-1 text-success">
+                              <Check className="w-3 h-3" />
+                              done
+                            </span>
                           ) : audio.status === 'pending' ? (
                             <span className="text-text-tertiary">pending</span>
                           ) : (
@@ -596,9 +610,14 @@ export function Queue() {
                       {/* Images */}
                       <div className="flex items-center gap-2 flex-1 min-w-0">
                         <Image className="w-3.5 h-3.5 text-accent shrink-0" />
-                        <Progress value={images.progress} className="h-1.5 flex-1" />
-                        <div className="text-xs text-text-secondary shrink-0 text-right min-w-[85px]">
-                          {images.images ? (
+                        <Progress value={images.status === 'complete' ? 100 : images.progress} className="h-1.5 flex-1" />
+                        <div className="text-xs text-text-secondary shrink-0 text-right min-w-[60px]">
+                          {images.status === 'complete' ? (
+                            <span className="flex items-center justify-end gap-1 text-success">
+                              <Check className="w-3 h-3" />
+                              done
+                            </span>
+                          ) : images.images ? (
                             <span className="flex items-center justify-end gap-1">
                               <span className="text-text-primary">{images.images.completed}/{images.images.total}</span>
                               {images.images.failed > 0 && (
@@ -608,8 +627,6 @@ export function Queue() {
                                 <span className="text-accent text-[10px] font-medium">⚡{images.activeWorkers}</span>
                               )}
                             </span>
-                          ) : images.status === 'complete' ? (
-                            <span className="text-success">done</span>
                           ) : images.status === 'pending' ? (
                             <span className="text-text-tertiary">pending</span>
                           ) : (
@@ -621,12 +638,13 @@ export function Queue() {
                       {/* Subtitles */}
                       <div className="flex items-center gap-2 flex-1 min-w-0">
                         <Subtitles className="w-3.5 h-3.5 text-green-400 shrink-0" />
-                        <Progress value={subtitles.progress} className="h-1.5 flex-1" />
-                        <div className="text-xs text-text-secondary shrink-0 text-right min-w-[65px]">
-                          {subtitles.subtitles?.lineCount ? (
-                            <span className="text-text-primary">{subtitles.subtitles.lineCount} lines</span>
-                          ) : subtitles.status === 'complete' ? (
-                            <span className="text-success">done</span>
+                        <Progress value={subtitles.status === 'complete' ? 100 : subtitles.progress} className="h-1.5 flex-1" />
+                        <div className="text-xs text-text-secondary shrink-0 text-right min-w-[60px]">
+                          {subtitles.status === 'complete' ? (
+                            <span className="flex items-center justify-end gap-1 text-success">
+                              <Check className="w-3 h-3" />
+                              done
+                            </span>
                           ) : subtitles.status === 'pending' ? (
                             <span className="text-text-tertiary">pending</span>
                           ) : (

@@ -312,21 +312,60 @@ function generateWhisperSRT(whisperOutput: WhisperOutput, wordsPerLine: number =
       continue
     }
 
-    // Process word-level data
+    // Process word-level data - first collect all words (including those without timing)
+    const segmentWords: Array<{ word: string; start?: number; end?: number }> = []
+
     for (const wordInfo of wordsData) {
       const word = wordInfo.word?.trim()
-      const startTime = wordInfo.start
-
       if (!word) continue
-      if (startTime === undefined || startTime === null || startTime < 0) continue
       if (/^[.,!?;:"'()[\]{}]+$/.test(word)) continue
 
-      let endTime = wordInfo.end
-      if (endTime === undefined || endTime === null || endTime <= startTime) {
-        endTime = startTime + 0.3
+      segmentWords.push({
+        word,
+        start: wordInfo.start,
+        end: wordInfo.end,
+      })
+    }
+
+    // Interpolate missing timestamps from adjacent words
+    for (let i = 0; i < segmentWords.length; i++) {
+      const w = segmentWords[i]
+
+      if (w.start === undefined) {
+        // Find previous word with timing
+        let prevEnd = segment.start
+        for (let j = i - 1; j >= 0; j--) {
+          const prevWord = segmentWords[j]
+          if (prevWord.end !== undefined) {
+            prevEnd = prevWord.end
+            break
+          }
+        }
+
+        // Find next word with timing
+        let nextStart = segment.end
+        for (let j = i + 1; j < segmentWords.length; j++) {
+          const nextWord = segmentWords[j]
+          if (nextWord.start !== undefined) {
+            nextStart = nextWord.start
+            break
+          }
+        }
+
+        // Interpolate timing for this word
+        w.start = prevEnd
+        w.end = nextStart
       }
 
-      allWords.push({ word, start: startTime, end: endTime })
+      // At this point w.start is guaranteed to be defined
+      const wordStart = w.start as number
+      let wordEnd = w.end
+
+      if (wordEnd === undefined || wordEnd <= wordStart) {
+        wordEnd = wordStart + 0.3
+      }
+
+      allWords.push({ word: w.word, start: wordStart, end: wordEnd })
     }
   }
 
