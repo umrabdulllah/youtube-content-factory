@@ -1,6 +1,23 @@
 import path from 'node:path'
 import fs from 'node:fs/promises'
+import { exec } from 'node:child_process'
+import { promisify } from 'node:util'
 import { SUBTITLES_DIR } from '@shared/constants'
+
+const execAsync = promisify(exec)
+
+// Get actual audio duration using ffprobe
+async function getAudioDuration(filePath: string): Promise<number | null> {
+  try {
+    const { stdout } = await execAsync(
+      `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${filePath}"`
+    )
+    const duration = parseFloat(stdout.trim())
+    return isNaN(duration) ? null : duration
+  } catch {
+    return null
+  }
+}
 import type {
   SubtitleGenerationService,
   SubtitleGenerationInput,
@@ -281,8 +298,11 @@ function formatWhisperSrtTime(seconds: number): string {
 
 /**
  * Generate SRT from WhisperX output with word-level timestamps
+ * @param whisperOutput - The WhisperX transcription output
+ * @param wordsPerLine - Number of words per subtitle line
+ * @param scaleFactor - Factor to scale timestamps (actualDuration / whisperDuration)
  */
-function generateWhisperSRT(whisperOutput: WhisperOutput, wordsPerLine: number = 5): string {
+function generateWhisperSRT(whisperOutput: WhisperOutput, wordsPerLine: number = 5, scaleFactor: number = 1.0): string {
   const subtitles: string[] = []
   let subtitleIndex = 1
 
@@ -290,6 +310,9 @@ function generateWhisperSRT(whisperOutput: WhisperOutput, wordsPerLine: number =
   const allWords: { word: string; start: number; end: number }[] = []
 
   for (const segment of whisperOutput.segments) {
+    // Apply scale factor to segment boundaries
+    const segStart = segment.start * scaleFactor
+    const segEnd = segment.end * scaleFactor
     const wordsData = segment.words
 
     if (!wordsData || wordsData.length === 0) {
@@ -298,14 +321,14 @@ function generateWhisperSRT(whisperOutput: WhisperOutput, wordsPerLine: number =
       if (!text) continue
 
       const words = text.split(/\s+/)
-      const segmentDuration = segment.end - segment.start
+      const segmentDuration = segEnd - segStart
 
       for (let i = 0; i < words.length; i++) {
         const word = words[i]
         if (!word) continue
 
-        const wordStart = segment.start + (i * segmentDuration) / words.length
-        const wordEnd = segment.start + ((i + 1) * segmentDuration) / words.length
+        const wordStart = segStart + (i * segmentDuration) / words.length
+        const wordEnd = segStart + ((i + 1) * segmentDuration) / words.length
 
         allWords.push({ word, start: wordStart, end: wordEnd })
       }
@@ -313,6 +336,7 @@ function generateWhisperSRT(whisperOutput: WhisperOutput, wordsPerLine: number =
     }
 
     // Process word-level data - first collect all words (including those without timing)
+    // Apply scale factor to word timestamps
     const segmentWords: Array<{ word: string; start?: number; end?: number }> = []
 
     for (const wordInfo of wordsData) {
@@ -322,50 +346,96 @@ function generateWhisperSRT(whisperOutput: WhisperOutput, wordsPerLine: number =
 
       segmentWords.push({
         word,
-        start: wordInfo.start,
-        end: wordInfo.end,
+        start: wordInfo.start !== undefined ? wordInfo.start * scaleFactor : undefined,
+        end: wordInfo.end !== undefined ? wordInfo.end * scaleFactor : undefined,
       })
     }
 
-    // Interpolate missing timestamps from adjacent words
-    for (let i = 0; i < segmentWords.length; i++) {
+    // Interpolate missing timestamps by distributing time evenly among consecutive words
+    // First pass: identify gaps and distribute time evenly
+    let i = 0
+    while (i < segmentWords.length) {
       const w = segmentWords[i]
 
-      if (w.start === undefined) {
-        // Find previous word with timing
-        let prevEnd = segment.start
-        for (let j = i - 1; j >= 0; j--) {
-          const prevWord = segmentWords[j]
-          if (prevWord.end !== undefined) {
-            prevEnd = prevWord.end
-            break
-          }
-        }
-
-        // Find next word with timing
-        let nextStart = segment.end
-        for (let j = i + 1; j < segmentWords.length; j++) {
-          const nextWord = segmentWords[j]
-          if (nextWord.start !== undefined) {
-            nextStart = nextWord.start
-            break
-          }
-        }
-
-        // Interpolate timing for this word
-        w.start = prevEnd
-        w.end = nextStart
+      if (w.start !== undefined && w.end !== undefined) {
+        // Word has complete timing, add it directly
+        allWords.push({ word: w.word, start: w.start, end: w.end })
+        i++
+        continue
       }
 
-      // At this point w.start is guaranteed to be defined
+      // Find the range of consecutive words without complete timing
+      let gapStart = i
+      let gapEnd = i
+
+      // Count consecutive words without start timestamps
+      while (gapEnd < segmentWords.length && segmentWords[gapEnd].start === undefined) {
+        gapEnd++
+      }
+
+      // If we found words with missing timestamps
+      if (gapEnd > gapStart) {
+        // Find the time boundaries (using scaled segment boundaries)
+        let prevEnd = segStart
+        for (let j = gapStart - 1; j >= 0; j--) {
+          if (segmentWords[j].end !== undefined) {
+            prevEnd = segmentWords[j].end as number
+            break
+          }
+        }
+
+        let nextStart = segEnd
+        for (let j = gapEnd; j < segmentWords.length; j++) {
+          if (segmentWords[j].start !== undefined) {
+            nextStart = segmentWords[j].start as number
+            break
+          }
+        }
+
+        // Distribute time evenly among all words in the gap
+        const wordsInGap = gapEnd - gapStart
+        const totalTime = nextStart - prevEnd
+        const timePerWord = totalTime / wordsInGap
+
+        for (let j = gapStart; j < gapEnd; j++) {
+          const wordIndex = j - gapStart
+          const wordStart = prevEnd + wordIndex * timePerWord
+          // End time is simply the next slot, clamped to never exceed nextStart
+          const wordEnd = Math.min(prevEnd + (wordIndex + 1) * timePerWord, nextStart)
+
+          segmentWords[j].start = wordStart
+          segmentWords[j].end = wordEnd
+
+          allWords.push({
+            word: segmentWords[j].word,
+            start: wordStart,
+            end: wordEnd,
+          })
+        }
+
+        i = gapEnd
+        continue
+      }
+
+      // Word has start but might be missing end
       const wordStart = w.start as number
       let wordEnd = w.end
 
       if (wordEnd === undefined || wordEnd <= wordStart) {
-        wordEnd = wordStart + 0.3
+        // Find next word's start for end time (using scaled segment boundary)
+        let nextWordStart = segEnd
+        for (let j = i + 1; j < segmentWords.length; j++) {
+          if (segmentWords[j].start !== undefined) {
+            nextWordStart = segmentWords[j].start as number
+            break
+          }
+        }
+        wordEnd = Math.min(wordStart + 0.5, nextWordStart - 0.05)
+        if (wordEnd <= wordStart) wordEnd = wordStart + 0.3
       }
 
       allWords.push({ word: w.word, start: wordStart, end: wordEnd })
+      i++
     }
   }
 
@@ -534,7 +604,20 @@ export class WhisperXSubtitleService implements SubtitleGenerationService {
           details: { segments: whisperOutput.segments.length },
         })
 
-        const srtContent = generateWhisperSRT(whisperOutput, 5)
+        // Calculate scale factor to correct Whisper timing drift
+        // Get actual audio duration and compare to Whisper's last timestamp
+        const actualDuration = await getAudioDuration(audioPath)
+        const whisperEndTime = whisperOutput.segments.length > 0
+          ? whisperOutput.segments[whisperOutput.segments.length - 1].end
+          : 0
+
+        let scaleFactor = 1.0
+        if (actualDuration && whisperEndTime > 0) {
+          scaleFactor = actualDuration / whisperEndTime
+          console.log(`[WhisperX] Timing correction: audio=${actualDuration.toFixed(2)}s, whisper=${whisperEndTime.toFixed(2)}s, scale=${scaleFactor.toFixed(3)}`)
+        }
+
+        const srtContent = generateWhisperSRT(whisperOutput, 5, scaleFactor)
         await fs.writeFile(outputPath, srtContent, 'utf-8')
 
         const lineCount = srtContent.split('\n\n').filter(block => block.trim()).length

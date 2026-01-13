@@ -27,6 +27,7 @@ function mapRow(row: Record<string, unknown>): Project {
     settingsOverride: JSON.parse((row.settings_override as string) || '{}'),
     generateImages: row.generate_images === 1,
     generateAudio: row.generate_audio === 1,
+    generateSubtitles: row.generate_subtitles === 1,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
     queuedAt: row.queued_at as string | undefined,
@@ -140,9 +141,9 @@ export function createProject(input: CreateProjectInput): Project {
       INSERT INTO projects (
         id, channel_id, title, slug, script, script_word_count,
         status, generation_progress, settings_override,
-        generate_images, generate_audio, created_at, updated_at
+        generate_images, generate_audio, generate_subtitles, created_at, updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, 'draft', '{}', ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, 'draft', '{}', ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       input.channelId,
@@ -153,6 +154,7 @@ export function createProject(input: CreateProjectInput): Project {
       JSON.stringify(input.settingsOverride || {}),
       input.generateImages !== false ? 1 : 0,
       input.generateAudio !== false ? 1 : 0,
+      input.generateSubtitles !== false ? 1 : 0,
       now,
       now
     )

@@ -203,6 +203,7 @@ export function createQueueTask(
 export interface GenerationTaskOptions {
   generateImages: boolean
   generateAudio: boolean
+  generateSubtitles: boolean
 }
 
 /**
@@ -217,7 +218,7 @@ export interface GenerationTaskOptions {
  */
 export function createProjectQueueTasks(
   projectId: string,
-  options: GenerationTaskOptions = { generateImages: true, generateAudio: true }
+  options: GenerationTaskOptions = { generateImages: true, generateAudio: true, generateSubtitles: true }
 ): QueueTask[] {
   const db = getDatabase()
   const tasks: QueueTask[] = []
@@ -243,7 +244,7 @@ export function createProjectQueueTasks(
       tasks.push(imagesTask)
     }
 
-    if (options.generateAudio && audioTask) {
+    if (options.generateSubtitles && options.generateAudio && audioTask) {
       const subtitlesTask = createQueueTask(projectId, 'subtitles', 5, audioTask.id, 1)
       tasks.push(subtitlesTask)
     }

@@ -161,6 +161,7 @@ export function registerProjectsHandlers(): void {
       console.log(`[Projects] Starting generation for ${id} with options:`, {
         generateImages: project.generateImages,
         generateAudio: project.generateAudio,
+        generateSubtitles: project.generateSubtitles,
       })
 
       // Update project status to queued
@@ -172,6 +173,7 @@ export function registerProjectsHandlers(): void {
       queueQueries.createProjectQueueTasks(id, {
         generateImages: project.generateImages,
         generateAudio: project.generateAudio,
+        generateSubtitles: project.generateSubtitles,
       })
 
       // Ensure queue manager is running to process tasks

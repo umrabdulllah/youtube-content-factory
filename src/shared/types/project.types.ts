@@ -61,6 +61,7 @@ export interface Project {
   settingsOverride: ChannelSettings
   generateImages: boolean
   generateAudio: boolean
+  generateSubtitles: boolean
   createdAt: string
   updatedAt: string
   queuedAt?: string
@@ -82,6 +83,7 @@ export interface CreateProjectInput {
   settingsOverride?: ChannelSettings
   generateImages?: boolean
   generateAudio?: boolean
+  generateSubtitles?: boolean
 }
 
 export interface UpdateProjectInput {

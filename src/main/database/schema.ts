@@ -170,6 +170,9 @@ export function createSchema(db: Database.Database): void {
   if (!existingProjectColumns.has('generate_audio')) {
     db.exec('ALTER TABLE projects ADD COLUMN generate_audio INTEGER DEFAULT 1')
   }
+  if (!existingProjectColumns.has('generate_subtitles')) {
+    db.exec('ALTER TABLE projects ADD COLUMN generate_subtitles INTEGER DEFAULT 1')
+  }
 
   // Cloud sync metadata table - tracks sync versions for categories/channels/api_keys
   db.exec(`

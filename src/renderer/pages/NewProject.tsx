@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { ArrowLeft, Sparkles, FileText, Clock, Image, Volume2 } from 'lucide-react'
+import { ArrowLeft, Sparkles, FileText, Clock, Image, Volume2, Captions } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Input } from '../components/ui/input'
@@ -36,6 +36,7 @@ export function NewProject() {
   const [script, setScript] = React.useState('')
   const [generateImages, setGenerateImages] = React.useState(true)
   const [generateAudio, setGenerateAudio] = React.useState(true)
+  const [generateSubtitles, setGenerateSubtitles] = React.useState(true)
 
   // Word count
   const wordCount = React.useMemo(() => {
@@ -117,6 +118,7 @@ export function NewProject() {
         script: script.trim(),
         generateImages,
         generateAudio,
+        generateSubtitles,
       })
 
       toast({ title: 'Success', description: 'Project created successfully', variant: 'success' })
@@ -154,6 +156,7 @@ export function NewProject() {
         script: script.trim(),
         generateImages,
         generateAudio,
+        generateSubtitles,
       })
 
       // Queue generation
@@ -362,7 +365,28 @@ The script will be used to:
                     Audio
                   </label>
                   <p className="text-xs text-text-tertiary">
-                    Generate voiceover and subtitles
+                    Generate voiceover for the video
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <Checkbox
+                  id="generate-subtitles"
+                  checked={generateSubtitles}
+                  onCheckedChange={(checked) => setGenerateSubtitles(checked === true)}
+                  disabled={!generateAudio}
+                />
+                <div className="grid gap-1.5 leading-none">
+                  <label
+                    htmlFor="generate-subtitles"
+                    className={`text-sm font-medium cursor-pointer flex items-center gap-2 ${!generateAudio ? 'text-text-tertiary' : 'text-text-primary'}`}
+                  >
+                    <Captions className="w-4 h-4 text-text-secondary" />
+                    Subtitles
+                  </label>
+                  <p className="text-xs text-text-tertiary">
+                    Generate subtitles from audio
                   </p>
                 </div>
               </div>
