@@ -14,7 +14,7 @@ import fs from 'node:fs/promises'
 import { generatePrompts, type PromptBatch, type PromptProgress } from './prompt-generation.service'
 import { createImageService, type ReplicateImageService } from './image.service'
 import { createAudioService, type RussianTTSService } from './audio.service'
-import { createSubtitleService, type WhisperXSubtitleService } from './subtitle.service'
+import { createSubtitleService, type OpenAIWhisperService } from './subtitle.service'
 import { getApiKey } from '../api-keys.service'
 import type { AppSettings } from '../../../shared/types'
 import type { ProgressCallback } from './types'
@@ -111,6 +111,7 @@ export class PipelineOrchestrator extends EventEmitter {
     const promptApiKey = await getApiKey('anthropicApi') || await getApiKey('openaiApi')
     const replicateApiKey = await getApiKey('replicateApi')
     const voiceApiKey = await getApiKey('voiceApi')
+    const openaiApiKey = await getApiKey('openaiApi')
 
     try {
       progress.phase = 'generating'
@@ -269,7 +270,7 @@ export class PipelineOrchestrator extends EventEmitter {
       }
 
       // Subtitle generation promise - starts immediately after audio is ready
-      if (audioPath && replicateApiKey) {
+      if (audioPath && openaiApiKey) {
         console.log('[Pipeline] Starting subtitle generation (parallel with images)')
 
         progress.subtitles.status = 'generating'
@@ -278,7 +279,7 @@ export class PipelineOrchestrator extends EventEmitter {
         const subtitlePromise = this.runSubtitleGeneration(
           projectPath,
           audioPath,
-          replicateApiKey,
+          openaiApiKey,
           settings.defaultLanguage,
           signal,
           (subtitleProgress) => {
@@ -456,7 +457,7 @@ export class PipelineOrchestrator extends EventEmitter {
     signal: AbortSignal,
     onProgress: ProgressCallback
   ): Promise<string | null> {
-    const subtitleService = createSubtitleService(apiKey) as WhisperXSubtitleService
+    const subtitleService = createSubtitleService(apiKey) as OpenAIWhisperService
 
     const result = await subtitleService.generate(
       {

@@ -4,7 +4,7 @@ export * from './types'
 // Export services
 export { ReplicateImageService, createImageService } from './image.service'
 export { RussianTTSService, createAudioService } from './audio.service'
-export { WhisperXSubtitleService, createSubtitleService } from './subtitle.service'
+export { OpenAIWhisperService, createSubtitleService } from './subtitle.service'
 
 // Export prompt generation
 export { generatePrompts } from './prompt-generation.service'

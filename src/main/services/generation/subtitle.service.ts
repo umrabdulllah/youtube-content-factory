@@ -6,18 +6,6 @@ import { SUBTITLES_DIR } from '@shared/constants'
 
 const execAsync = promisify(exec)
 
-// Get actual audio duration using ffprobe
-async function getAudioDuration(filePath: string): Promise<number | null> {
-  try {
-    const { stdout } = await execAsync(
-      `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${filePath}"`
-    )
-    const duration = parseFloat(stdout.trim())
-    return isNaN(duration) ? null : duration
-  } catch {
-    return null
-  }
-}
 import type {
   SubtitleGenerationService,
   SubtitleGenerationInput,
@@ -254,38 +242,34 @@ export class MockSubtitleService implements SubtitleGenerationService {
 export const mockSubtitleService = new MockSubtitleService()
 
 // ============================================
-// WHISPERX SUBTITLE SERVICE (Replicate)
+// OPENAI WHISPER SUBTITLE SERVICE
 // ============================================
 
-const WHISPERX_MODEL_VERSION = '84d2ad2d6194fe98a17d2b60bef1c7f910c46b2f6fd38996ca457afd9c8abfcb'
-const POLL_INTERVAL_MS = 3000
-const MAX_POLL_ATTEMPTS = 100
-
-interface WhisperWord {
+interface OpenAIWord {
   word: string
-  start?: number
-  end?: number
+  start: number
+  end: number
 }
 
-interface WhisperSegment {
+interface OpenAISegment {
+  id: number
   start: number
   end: number
   text: string
-  words?: WhisperWord[]
 }
 
-interface WhisperOutput {
-  segments: WhisperSegment[]
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms))
+interface OpenAITranscriptionResponse {
+  language: string
+  duration: number
+  text: string
+  words: OpenAIWord[]
+  segments: OpenAISegment[]
 }
 
 /**
  * Format seconds to SRT timestamp (HH:MM:SS,mmm)
  */
-function formatWhisperSrtTime(seconds: number): string {
+function formatOpenAISrtTime(seconds: number): string {
   if (!seconds || seconds < 0) seconds = 0
 
   const hours = Math.floor(seconds / 3600)
@@ -297,151 +281,85 @@ function formatWhisperSrtTime(seconds: number): string {
 }
 
 /**
- * Generate SRT from WhisperX output with word-level timestamps
- * @param whisperOutput - The WhisperX transcription output
- * @param wordsPerLine - Number of words per subtitle line
- * @param scaleFactor - Factor to scale timestamps (actualDuration / whisperDuration)
+ * Normalize word for matching (remove punctuation, lowercase)
  */
-function generateWhisperSRT(whisperOutput: WhisperOutput, wordsPerLine: number = 5, scaleFactor: number = 1.0): string {
+function normalizeWord(word: string): string {
+  return word.toLowerCase().replace(/[^\w]/g, '')
+}
+
+/**
+ * Generate SRT from OpenAI transcription with word-level timestamps
+ * Uses segment text for punctuation and word timestamps for timing
+ */
+function generateOpenAISRT(transcription: OpenAITranscriptionResponse, wordsPerLine: number = 5): string {
   const subtitles: string[] = []
   let subtitleIndex = 1
+  const words = transcription.words
+  const segments = transcription.segments
 
-  // Collect all valid words
-  const allWords: { word: string; start: number; end: number }[] = []
+  if (!words || words.length === 0) {
+    return ''
+  }
 
-  for (const segment of whisperOutput.segments) {
-    // Apply scale factor to segment boundaries
-    const segStart = segment.start * scaleFactor
-    const segEnd = segment.end * scaleFactor
-    const wordsData = segment.words
+  // Build array of punctuated words with timestamps
+  // Strategy: Match segment words (with punctuation) to word timestamps
+  const punctuatedWords: { word: string; start: number; end: number }[] = []
+  let wordIndex = 0
 
-    if (!wordsData || wordsData.length === 0) {
-      // Fallback: use segment-level timing
-      const text = segment.text?.trim()
-      if (!text) continue
+  for (const segment of segments || []) {
+    // Split segment text into words (keeping punctuation attached)
+    const segmentWords = segment.text.trim().split(/\s+/).filter(w => w.length > 0)
 
-      const words = text.split(/\s+/)
-      const segmentDuration = segEnd - segStart
+    for (const segWord of segmentWords) {
+      // Find matching word in timestamps array
+      const normalizedSegWord = normalizeWord(segWord)
 
-      for (let i = 0; i < words.length; i++) {
-        const word = words[i]
-        if (!word) continue
-
-        const wordStart = segStart + (i * segmentDuration) / words.length
-        const wordEnd = segStart + ((i + 1) * segmentDuration) / words.length
-
-        allWords.push({ word, start: wordStart, end: wordEnd })
-      }
-      continue
-    }
-
-    // Process word-level data - first collect all words (including those without timing)
-    // Apply scale factor to word timestamps
-    const segmentWords: Array<{ word: string; start?: number; end?: number }> = []
-
-    for (const wordInfo of wordsData) {
-      const word = wordInfo.word?.trim()
-      if (!word) continue
-      if (/^[.,!?;:"'()[\]{}]+$/.test(word)) continue
-
-      segmentWords.push({
-        word,
-        start: wordInfo.start !== undefined ? wordInfo.start * scaleFactor : undefined,
-        end: wordInfo.end !== undefined ? wordInfo.end * scaleFactor : undefined,
-      })
-    }
-
-    // Interpolate missing timestamps by distributing time evenly among consecutive words
-    // First pass: identify gaps and distribute time evenly
-    let i = 0
-    while (i < segmentWords.length) {
-      const w = segmentWords[i]
-
-      if (w.start !== undefined && w.end !== undefined) {
-        // Word has complete timing, add it directly
-        allWords.push({ word: w.word, start: w.start, end: w.end })
-        i++
-        continue
-      }
-
-      // Find the range of consecutive words without complete timing
-      let gapStart = i
-      let gapEnd = i
-
-      // Count consecutive words without start timestamps
-      while (gapEnd < segmentWords.length && segmentWords[gapEnd].start === undefined) {
-        gapEnd++
-      }
-
-      // If we found words with missing timestamps
-      if (gapEnd > gapStart) {
-        // Find the time boundaries (using scaled segment boundaries)
-        let prevEnd = segStart
-        for (let j = gapStart - 1; j >= 0; j--) {
-          if (segmentWords[j].end !== undefined) {
-            prevEnd = segmentWords[j].end as number
-            break
-          }
-        }
-
-        let nextStart = segEnd
-        for (let j = gapEnd; j < segmentWords.length; j++) {
-          if (segmentWords[j].start !== undefined) {
-            nextStart = segmentWords[j].start as number
-            break
-          }
-        }
-
-        // Distribute time evenly among all words in the gap
-        const wordsInGap = gapEnd - gapStart
-        const totalTime = nextStart - prevEnd
-        const timePerWord = totalTime / wordsInGap
-
-        for (let j = gapStart; j < gapEnd; j++) {
-          const wordIndex = j - gapStart
-          const wordStart = prevEnd + wordIndex * timePerWord
-          // End time is simply the next slot, clamped to never exceed nextStart
-          const wordEnd = Math.min(prevEnd + (wordIndex + 1) * timePerWord, nextStart)
-
-          segmentWords[j].start = wordStart
-          segmentWords[j].end = wordEnd
-
-          allWords.push({
-            word: segmentWords[j].word,
-            start: wordStart,
-            end: wordEnd,
+      // Look for matching word starting from current index
+      let matched = false
+      for (let i = wordIndex; i < Math.min(wordIndex + 5, words.length); i++) {
+        const normalizedTimedWord = normalizeWord(words[i].word)
+        if (normalizedTimedWord === normalizedSegWord) {
+          punctuatedWords.push({
+            word: segWord,
+            start: words[i].start,
+            end: words[i].end,
           })
+          wordIndex = i + 1
+          matched = true
+          break
         }
-
-        i = gapEnd
-        continue
       }
 
-      // Word has start but might be missing end
-      const wordStart = w.start as number
-      let wordEnd = w.end
-
-      if (wordEnd === undefined || wordEnd <= wordStart) {
-        // Find next word's start for end time (using scaled segment boundary)
-        let nextWordStart = segEnd
-        for (let j = i + 1; j < segmentWords.length; j++) {
-          if (segmentWords[j].start !== undefined) {
-            nextWordStart = segmentWords[j].start as number
-            break
-          }
-        }
-        wordEnd = Math.min(wordStart + 0.5, nextWordStart - 0.05)
-        if (wordEnd <= wordStart) wordEnd = wordStart + 0.3
+      // If no match found, use last known timestamp + estimate
+      if (!matched && punctuatedWords.length > 0) {
+        const lastWord = punctuatedWords[punctuatedWords.length - 1]
+        punctuatedWords.push({
+          word: segWord,
+          start: lastWord.end,
+          end: lastWord.end + 0.3, // Estimate 300ms per word
+        })
+      } else if (!matched && words[wordIndex]) {
+        // Use next available timestamp
+        punctuatedWords.push({
+          word: segWord,
+          start: words[wordIndex].start,
+          end: words[wordIndex].end,
+        })
+        wordIndex++
       }
+    }
+  }
 
-      allWords.push({ word: w.word, start: wordStart, end: wordEnd })
-      i++
+  // Fallback: if no segments, use words directly
+  if (punctuatedWords.length === 0) {
+    for (const w of words) {
+      punctuatedWords.push({ word: w.word, start: w.start, end: w.end })
     }
   }
 
   // Group words into subtitle lines
-  for (let i = 0; i < allWords.length; i += wordsPerLine) {
-    const wordGroup = allWords.slice(i, i + wordsPerLine)
+  for (let i = 0; i < punctuatedWords.length; i += wordsPerLine) {
+    const wordGroup = punctuatedWords.slice(i, i + wordsPerLine)
     if (wordGroup.length === 0) continue
 
     const startTime = wordGroup[0].start
@@ -449,7 +367,7 @@ function generateWhisperSRT(whisperOutput: WhisperOutput, wordsPerLine: number =
     const textLine = wordGroup.map(w => w.word).join(' ')
 
     subtitles.push(`${subtitleIndex}`)
-    subtitles.push(`${formatWhisperSrtTime(startTime)} --> ${formatWhisperSrtTime(endTime)}`)
+    subtitles.push(`${formatOpenAISrtTime(startTime)} --> ${formatOpenAISrtTime(endTime)}`)
     subtitles.push(textLine)
     subtitles.push('')
 
@@ -459,25 +377,8 @@ function generateWhisperSRT(whisperOutput: WhisperOutput, wordsPerLine: number =
   return subtitles.join('\n')
 }
 
-// Supported audio MIME types
-const AUDIO_MIME_TYPES: Record<string, string> = {
-  '.mp3': 'audio/mpeg',
-  '.wav': 'audio/wav',
-  '.m4a': 'audio/mp4',
-  '.flac': 'audio/flac',
-  '.ogg': 'audio/ogg',
-  '.opus': 'audio/opus',
-  '.webm': 'audio/webm',
-  '.aac': 'audio/aac',
-}
-
-function getMimeType(filePath: string): string {
-  const ext = path.extname(filePath).toLowerCase()
-  return AUDIO_MIME_TYPES[ext] || 'audio/mpeg'
-}
-
-// WhisperX Subtitle Service
-export class WhisperXSubtitleService implements SubtitleGenerationService {
+// OpenAI Whisper Subtitle Service
+export class OpenAIWhisperService implements SubtitleGenerationService {
   readonly name = 'subtitles' as const
   private apiKey: string
 
@@ -487,14 +388,151 @@ export class WhisperXSubtitleService implements SubtitleGenerationService {
 
   async validateConfig(): Promise<{ valid: boolean; error?: string }> {
     if (!this.apiKey) {
-      return { valid: false, error: 'Replicate API key is required' }
+      return { valid: false, error: 'OpenAI API key is required for transcription' }
     }
 
-    if (!this.apiKey.startsWith('r8_')) {
-      return { valid: false, error: 'Invalid Replicate API key format' }
+    if (!this.apiKey.startsWith('sk-')) {
+      return { valid: false, error: 'Invalid OpenAI API key format' }
     }
 
     return { valid: true }
+  }
+
+  /**
+   * Transcribe a single audio file (must be under 25MB)
+   */
+  private async transcribeSingleFile(audioPath: string): Promise<OpenAITranscriptionResponse> {
+    const audioBuffer = await fs.readFile(audioPath)
+    const fileName = path.basename(audioPath)
+
+    // Create form data for OpenAI API
+    const formData = new FormData()
+    formData.append('file', new Blob([audioBuffer]), fileName)
+    formData.append('model', 'whisper-1')
+    formData.append('response_format', 'verbose_json')
+    formData.append('timestamp_granularities[]', 'word')
+    formData.append('timestamp_granularities[]', 'segment')
+
+    console.log(`[OpenAI Whisper] Transcribing: ${audioPath}, size: ${audioBuffer.length} bytes`)
+
+    const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`,
+      },
+      body: formData,
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      let errorMessage = `OpenAI transcription failed: ${response.status}`
+      try {
+        const errorJson = JSON.parse(errorText)
+        errorMessage = errorJson.error?.message || errorMessage
+      } catch {
+        // Use default error message
+      }
+      throw new Error(errorMessage)
+    }
+
+    return response.json()
+  }
+
+  /**
+   * Get audio duration using ffprobe
+   */
+  private async getAudioDuration(audioPath: string): Promise<number> {
+    const { stdout } = await execAsync(
+      `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${audioPath}"`
+    )
+    return parseFloat(stdout.trim())
+  }
+
+  /**
+   * Transcribe a large audio file by splitting into chunks
+   */
+  private async transcribeLargeFile(audioPath: string): Promise<OpenAITranscriptionResponse> {
+    const chunkDir = path.join(path.dirname(audioPath), 'transcription_chunks')
+    await fs.mkdir(chunkDir, { recursive: true })
+
+    // Get total duration
+    const totalDuration = await this.getAudioDuration(audioPath)
+    const chunkDuration = 600 // 10 minutes per chunk
+
+    console.log(`[OpenAI Whisper] Large file detected. Duration: ${totalDuration.toFixed(1)}s, splitting into ${Math.ceil(totalDuration / chunkDuration)} chunks`)
+
+    const chunks: string[] = []
+
+    // Split audio into chunks using ffmpeg
+    for (let start = 0; start < totalDuration; start += chunkDuration) {
+      const chunkPath = path.join(chunkDir, `chunk_${start}.mp3`)
+      await execAsync(
+        `ffmpeg -y -i "${audioPath}" -ss ${start} -t ${chunkDuration} -acodec libmp3lame -q:a 2 "${chunkPath}"`
+      )
+      chunks.push(chunkPath)
+    }
+
+    // Transcribe each chunk and merge results
+    const allWords: OpenAIWord[] = []
+    const allSegments: OpenAISegment[] = []
+    let timeOffset = 0
+    let segmentIdOffset = 0
+
+    for (let i = 0; i < chunks.length; i++) {
+      const chunkPath = chunks[i]
+      console.log(`[OpenAI Whisper] Transcribing chunk ${i + 1}/${chunks.length}`)
+
+      const result = await this.transcribeSingleFile(chunkPath)
+
+      // Add words with time offset
+      for (const word of result.words || []) {
+        allWords.push({
+          word: word.word,
+          start: word.start + timeOffset,
+          end: word.end + timeOffset,
+        })
+      }
+
+      // Add segments with time offset
+      for (const segment of result.segments || []) {
+        allSegments.push({
+          id: segment.id + segmentIdOffset,
+          start: segment.start + timeOffset,
+          end: segment.end + timeOffset,
+          text: segment.text,
+        })
+      }
+
+      timeOffset = (i + 1) * chunkDuration
+      segmentIdOffset += (result.segments || []).length
+    }
+
+    // Cleanup chunks
+    await fs.rm(chunkDir, { recursive: true, force: true })
+
+    return {
+      language: 'en',
+      duration: totalDuration,
+      text: allSegments.map(s => s.text).join(' '),
+      words: allWords,
+      segments: allSegments,
+    }
+  }
+
+  /**
+   * Transcribe audio file with OpenAI Whisper
+   * Handles large files by splitting into chunks
+   */
+  private async transcribeWithOpenAI(audioPath: string): Promise<OpenAITranscriptionResponse> {
+    // Check file size - OpenAI limit is 25MB
+    const stats = await fs.stat(audioPath)
+    const MAX_SIZE = 24 * 1024 * 1024 // 24MB to be safe
+
+    if (stats.size > MAX_SIZE) {
+      return this.transcribeLargeFile(audioPath)
+    }
+
+    return this.transcribeSingleFile(audioPath)
   }
 
   async generate(
@@ -517,161 +555,74 @@ export class WhisperXSubtitleService implements SubtitleGenerationService {
 
     if (signal.aborted) throw new Error('Subtitle generation cancelled')
 
-    // Read and convert audio to base64 data URL
-    const audioBuffer = await fs.readFile(audioPath)
-    const audioBase64 = audioBuffer.toString('base64')
-    const mimeType = getMimeType(audioPath)
-    const audioDataUrl = `data:${mimeType};base64,${audioBase64}`
-
-    console.log(`[WhisperX] Audio file: ${audioPath}, size: ${audioBuffer.length} bytes`)
+    const stats = await fs.stat(audioPath)
+    console.log(`[OpenAI Whisper] Audio file: ${audioPath}, size: ${stats.size} bytes`)
 
     onProgress({
       percentage: 10,
-      message: 'Starting transcription...',
-      details: { audioSize: audioBuffer.length },
+      message: 'Starting OpenAI Whisper transcription...',
+      details: { audioSize: stats.size },
     })
 
-    // Create prediction
-    const createResponse = await fetch('https://api.replicate.com/v1/predictions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Token ${this.apiKey}`,
-      },
-      body: JSON.stringify({
-        version: WHISPERX_MODEL_VERSION,
-        input: {
-          audio_file: audioDataUrl,
-          align_output: true,
-          temperature: 0,
-          batch_size: 64,
-          language: input.settings.language || undefined,
-        },
-      }),
-    })
+    if (signal.aborted) throw new Error('Subtitle generation cancelled')
 
-    if (!createResponse.ok) {
-      const contentType = createResponse.headers.get('content-type') || ''
+    // Transcribe with OpenAI
+    const transcription = await this.transcribeWithOpenAI(audioPath)
 
-      if (!contentType.includes('application/json')) {
-        if (createResponse.status === 401 || createResponse.status === 403) {
-          throw new Error('Invalid or expired Replicate API key')
-        }
-        throw new Error(`Replicate API error: ${createResponse.status}`)
-      }
-
-      const errorData = await createResponse.json()
-      throw new Error(errorData.detail || 'Failed to start transcription')
+    if (!transcription.words || transcription.words.length === 0) {
+      throw new Error('No transcription data received from OpenAI')
     }
 
-    const prediction = await createResponse.json()
-    const predictionId = prediction.id
-
-    console.log(`[WhisperX] Prediction created: ${predictionId}`)
+    console.log(`[OpenAI Whisper] Transcription complete: ${transcription.words.length} words, duration: ${transcription.duration}s`)
 
     onProgress({
-      percentage: 20,
-      message: 'Transcription in progress...',
-      details: { predictionId },
+      percentage: 80,
+      message: 'Generating SRT file...',
+      details: { wordCount: transcription.words.length },
     })
 
-    // Poll for completion
-    for (let attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt++) {
-      if (signal.aborted) throw new Error('Subtitle generation cancelled')
+    if (signal.aborted) throw new Error('Subtitle generation cancelled')
 
-      await sleep(POLL_INTERVAL_MS)
+    // Generate SRT from transcription
+    const srtContent = generateOpenAISRT(transcription, 5)
+    await fs.writeFile(outputPath, srtContent, 'utf-8')
 
-      const statusResponse = await fetch(`https://api.replicate.com/v1/predictions/${predictionId}`, {
-        headers: { Authorization: `Token ${this.apiKey}` },
-      })
+    const lineCount = srtContent.split('\n\n').filter(block => block.trim()).length
 
-      if (!statusResponse.ok) {
-        throw new Error(`Failed to check prediction status: ${statusResponse.status}`)
-      }
+    onProgress({
+      percentage: 100,
+      message: 'Subtitles generated successfully',
+      details: { lineCount },
+    })
 
-      const status = await statusResponse.json()
-
-      if (status.status === 'succeeded') {
-        const whisperOutput = status.output as WhisperOutput
-
-        if (!whisperOutput || !whisperOutput.segments) {
-          throw new Error('No transcription data received')
-        }
-
-        onProgress({
-          percentage: 80,
-          message: 'Generating SRT file...',
-          details: { segments: whisperOutput.segments.length },
-        })
-
-        // Calculate scale factor to correct Whisper timing drift
-        // Get actual audio duration and compare to Whisper's last timestamp
-        const actualDuration = await getAudioDuration(audioPath)
-        const whisperEndTime = whisperOutput.segments.length > 0
-          ? whisperOutput.segments[whisperOutput.segments.length - 1].end
-          : 0
-
-        let scaleFactor = 1.0
-        if (actualDuration && whisperEndTime > 0) {
-          scaleFactor = actualDuration / whisperEndTime
-          console.log(`[WhisperX] Timing correction: audio=${actualDuration.toFixed(2)}s, whisper=${whisperEndTime.toFixed(2)}s, scale=${scaleFactor.toFixed(3)}`)
-        }
-
-        const srtContent = generateWhisperSRT(whisperOutput, 5, scaleFactor)
-        await fs.writeFile(outputPath, srtContent, 'utf-8')
-
-        const lineCount = srtContent.split('\n\n').filter(block => block.trim()).length
-
-        onProgress({
-          percentage: 100,
-          message: 'Subtitles generated successfully',
-          details: { lineCount },
-        })
-
-        return {
-          subtitlePath: outputPath,
-          lineCount,
-          format: 'srt',
-        }
-      }
-
-      if (status.status === 'failed' || status.status === 'canceled') {
-        throw new Error(status.error || 'Transcription failed')
-      }
-
-      // Update progress
-      const progress = 20 + Math.min(attempt * 2, 60)
-      onProgress({
-        percentage: progress,
-        message: `Transcription in progress... (${status.status})`,
-        details: { status: status.status },
-      })
+    return {
+      subtitlePath: outputPath,
+      lineCount,
+      format: 'srt',
     }
-
-    throw new Error('Transcription timed out')
   }
 
   async estimateCost(input: SubtitleGenerationInput): Promise<{ amount: number; currency: string }> {
-    // WhisperX costs approximately $0.01 per minute of audio
+    // OpenAI Whisper costs approximately $0.006 per minute of audio
     // Estimate based on audio file size (rough estimate: 1MB = 1 minute for MP3)
     try {
       const stats = await fs.stat(input.audioPath)
       const estimatedMinutes = stats.size / (1024 * 1024)
-      const costPerMinute = 0.01
+      const costPerMinute = 0.006
       return {
-        amount: Math.round(estimatedMinutes * costPerMinute * 100) / 100,
+        amount: Math.round(estimatedMinutes * costPerMinute * 1000) / 1000,
         currency: 'USD',
       }
     } catch {
-      return { amount: 0.05, currency: 'USD' } // Default estimate
+      return { amount: 0.02, currency: 'USD' } // Default estimate
     }
   }
 }
 
 // Factory function
 export function createSubtitleService(apiKey?: string): SubtitleGenerationService {
-  if (apiKey && apiKey.startsWith('r8_')) {
-    return new WhisperXSubtitleService(apiKey)
+  if (apiKey && apiKey.startsWith('sk-')) {
+    return new OpenAIWhisperService(apiKey)
   }
   return mockSubtitleService
 }

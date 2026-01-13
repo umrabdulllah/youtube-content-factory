@@ -609,9 +609,9 @@ class QueueManager {
       throw new Error('Audio file not found. Run audio task first.')
     }
 
-    const replicateApiKey = await getApiKey('replicateApi')
+    const openaiApiKey = await getApiKey('openaiApi')
 
-    const subtitleService = createSubtitleService(replicateApiKey ?? undefined)
+    const subtitleService = createSubtitleService(openaiApiKey ?? undefined)
     const result = await subtitleService.generate(
       {
         projectId: project.id,
