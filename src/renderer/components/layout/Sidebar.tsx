@@ -11,6 +11,7 @@ import {
   Users,
   LogOut,
   Activity,
+  Key,
 } from 'lucide-react'
 import { cn } from '@renderer/lib/utils'
 import { Button } from '../ui/button'
@@ -31,7 +32,7 @@ const mainNavItems = [
 export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const location = useLocation()
   const navigate = useNavigate()
-  const { isAdmin, logout } = useAuth()
+  const { isAdmin, canManageApiKeys, logout } = useAuth()
 
   const handleLogout = async () => {
     await logout()
@@ -117,6 +118,23 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
           >
             <Users className="w-4 h-4 flex-shrink-0" />
             {!collapsed && <span>Users</span>}
+          </Link>
+        )}
+
+        {/* API Keys - Admin and Manager */}
+        {canManageApiKeys && (
+          <Link
+            to="/admin/api-keys"
+            className={cn(
+              'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors',
+              location.pathname === '/admin/api-keys'
+                ? 'bg-accent/10 text-accent'
+                : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
+              collapsed && 'justify-center px-0'
+            )}
+          >
+            <Key className="w-4 h-4 flex-shrink-0" />
+            {!collapsed && <span>API Keys</span>}
           </Link>
         )}
 

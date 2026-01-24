@@ -6,7 +6,16 @@ import type {
   ChannelWithCategory,
   CreateChannelInput,
   UpdateChannelInput,
+  UserRole,
 } from '../../../shared/types'
+
+/**
+ * User context for content isolation
+ */
+export interface UserContext {
+  userId: string
+  role: UserRole
+}
 
 function mapRow(row: Record<string, unknown>): Channel {
   return {
@@ -31,8 +40,25 @@ function mapRowWithCategory(row: Record<string, unknown>): ChannelWithCategory {
   }
 }
 
-export function getAllChannels(): ChannelWithCategory[] {
+/**
+ * Build WHERE clause for owner_id filtering based on user role
+ */
+function buildOwnerFilter(userContext?: UserContext, alias = 'ch'): { clause: string; params: unknown[] } {
+  if (!userContext) {
+    return { clause: '', params: [] }
+  }
+
+  if (userContext.role === 'manager') {
+    return { clause: `AND ${alias}.owner_id = ?`, params: [userContext.userId] }
+  } else {
+    return { clause: `AND ${alias}.owner_id IS NULL`, params: [] }
+  }
+}
+
+export function getAllChannels(userContext?: UserContext): ChannelWithCategory[] {
   const db = getDatabase()
+  const { clause, params } = buildOwnerFilter(userContext)
+
   const rows = db.prepare(`
     SELECT
       ch.*,
@@ -40,8 +66,9 @@ export function getAllChannels(): ChannelWithCategory[] {
       c.color as category_color
     FROM channels ch
     JOIN categories c ON c.id = ch.category_id
+    WHERE 1=1 ${clause}
     ORDER BY c.sort_order ASC, ch.sort_order ASC
-  `).all() as Record<string, unknown>[]
+  `).all(...params) as Record<string, unknown>[]
 
   return rows.map(mapRowWithCategory)
 }
@@ -96,11 +123,14 @@ function generateUniqueChannelSlug(
   return `${baseSlug}-${suffix}`
 }
 
-export function createChannel(input: CreateChannelInput): Channel {
+export function createChannel(input: CreateChannelInput, userContext?: UserContext): Channel {
   const db = getDatabase()
   const id = uuid()
   const slug = generateUniqueChannelSlug(input.categoryId, input.name)
   const now = new Date().toISOString()
+
+  // Set owner_id based on role: managers own their content, others create org content
+  const ownerId = userContext?.role === 'manager' ? userContext.userId : null
 
   // Get max sort_order within this category
   const maxOrder = db.prepare(`
@@ -108,8 +138,8 @@ export function createChannel(input: CreateChannelInput): Channel {
   `).get(input.categoryId) as { max_order: number }
 
   db.prepare(`
-    INSERT INTO channels (id, category_id, name, slug, description, default_settings, project_count, sort_order, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+    INSERT INTO channels (id, category_id, name, slug, description, default_settings, project_count, sort_order, owner_id, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
   `).run(
     id,
     input.categoryId,
@@ -118,6 +148,7 @@ export function createChannel(input: CreateChannelInput): Channel {
     input.description || null,
     JSON.stringify(input.defaultSettings || {}),
     maxOrder.max_order + 1,
+    ownerId,
     now,
     now
   )

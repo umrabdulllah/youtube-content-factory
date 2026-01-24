@@ -5,7 +5,14 @@ interface AuthContextValue extends AuthState {
   login: (email: string, password: string) => Promise<void>
   logout: () => Promise<void>
   refreshSession: () => Promise<void>
+  /** User is an admin (manages org keys and content) */
   isAdmin: boolean
+  /** User is a manager (manages own keys and content) */
+  isManager: boolean
+  /** User is an editor (uses org keys, limited access) */
+  isEditor: boolean
+  /** User can manage API keys (admin or manager) */
+  canManageApiKeys: boolean
 }
 
 const AuthContext = React.createContext<AuthContextValue | null>(null)
@@ -85,12 +92,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  const isAdmin = state.user?.role === 'admin'
+  const isManager = state.user?.role === 'manager'
+  const isEditor = state.user?.role === 'editor'
+
   const value: AuthContextValue = {
     ...state,
     login,
     logout,
     refreshSession,
-    isAdmin: state.user?.role === 'admin',
+    isAdmin,
+    isManager,
+    isEditor,
+    canManageApiKeys: isAdmin || isManager,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

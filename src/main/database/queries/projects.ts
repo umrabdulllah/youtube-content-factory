@@ -7,7 +7,31 @@ import type {
   CreateProjectInput,
   UpdateProjectInput,
   ProjectStatus,
+  UserRole,
 } from '../../../shared/types'
+
+/**
+ * User context for content isolation
+ */
+export interface UserContext {
+  userId: string
+  role: UserRole
+}
+
+/**
+ * Build WHERE clause for owner_id filtering based on user role
+ */
+function buildOwnerFilter(userContext?: UserContext, alias = 'p'): { clause: string; params: unknown[] } {
+  if (!userContext) {
+    return { clause: '', params: [] }
+  }
+
+  if (userContext.role === 'manager') {
+    return { clause: `AND ${alias}.owner_id = ?`, params: [userContext.userId] }
+  } else {
+    return { clause: `AND ${alias}.owner_id IS NULL`, params: [] }
+  }
+}
 
 function mapRow(row: Record<string, unknown>): Project {
   return {
@@ -46,8 +70,10 @@ function mapRowWithChannel(row: Record<string, unknown>): ProjectWithChannel {
   }
 }
 
-export function getAllProjects(): ProjectWithChannel[] {
+export function getAllProjects(userContext?: UserContext): ProjectWithChannel[] {
   const db = getDatabase()
+  const { clause, params } = buildOwnerFilter(userContext)
+
   const rows = db.prepare(`
     SELECT
       p.*,
@@ -58,8 +84,9 @@ export function getAllProjects(): ProjectWithChannel[] {
     FROM projects p
     JOIN channels ch ON ch.id = p.channel_id
     JOIN categories c ON c.id = ch.category_id
+    WHERE 1=1 ${clause}
     ORDER BY p.created_at DESC
-  `).all() as Record<string, unknown>[]
+  `).all(...params) as Record<string, unknown>[]
 
   return rows.map(mapRowWithChannel)
 }
@@ -128,12 +155,15 @@ function generateUniqueSlug(
   return `${baseSlug}-${suffix}`
 }
 
-export function createProject(input: CreateProjectInput): Project {
+export function createProject(input: CreateProjectInput, userContext?: UserContext): Project {
   const db = getDatabase()
   const id = uuid()
   const slug = generateUniqueSlug(input.channelId, input.title)
   const now = new Date().toISOString()
   const wordCount = input.script ? countWords(input.script) : 0
+
+  // Set owner_id based on role: managers own their content, others create org content
+  const ownerId = userContext?.role === 'manager' ? userContext.userId : null
 
   // Use transaction to ensure atomicity of project creation and channel count update
   const createProjectTransaction = db.transaction(() => {
@@ -141,9 +171,9 @@ export function createProject(input: CreateProjectInput): Project {
       INSERT INTO projects (
         id, channel_id, title, slug, script, script_word_count,
         status, generation_progress, settings_override,
-        generate_images, generate_audio, generate_subtitles, created_at, updated_at
+        generate_images, generate_audio, generate_subtitles, owner_id, created_at, updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, 'draft', '{}', ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, 'draft', '{}', ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       input.channelId,
@@ -155,6 +185,7 @@ export function createProject(input: CreateProjectInput): Project {
       input.generateImages !== false ? 1 : 0,
       input.generateAudio !== false ? 1 : 0,
       input.generateSubtitles !== false ? 1 : 0,
+      ownerId,
       now,
       now
     )

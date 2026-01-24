@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../co
 import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
 import { useToast } from '../components/ui/toaster'
+import { useAuth } from '../contexts/AuthContext'
 import type { ApiKeyType, ApiKeysConfig } from '@shared/types'
 
 interface ApiKeyField {
@@ -47,6 +48,7 @@ const API_KEY_FIELDS: ApiKeyField[] = [
 
 export function AdminApiKeys() {
   const { toast } = useToast()
+  const { isAdmin, isManager } = useAuth()
   const [keys, setKeys] = React.useState<ApiKeysConfig>({})
   const [loading, setLoading] = React.useState(true)
   const [saving, setSaving] = React.useState<ApiKeyType | null>(null)
@@ -202,7 +204,9 @@ export function AdminApiKeys() {
         <div>
           <h1 className="text-2xl font-bold">API Key Management</h1>
           <p className="text-text-secondary">
-            Manage API keys for all editors. Changes sync automatically.
+            {isAdmin
+              ? 'Manage API keys for all editors. Changes sync automatically.'
+              : 'Configure your personal API keys for content generation.'}
           </p>
         </div>
         <Button variant="outline" onClick={handleRefresh} className="gap-2">
@@ -210,6 +214,26 @@ export function AdminApiKeys() {
           Refresh
         </Button>
       </div>
+
+      {/* Manager info card */}
+      {isManager && (
+        <Card className="bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900">
+          <CardContent className="pt-6">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5" />
+              <div className="text-sm">
+                <p className="font-medium text-amber-900 dark:text-amber-100">
+                  Personal API Keys Required
+                </p>
+                <p className="text-amber-700 dark:text-amber-300 mt-1">
+                  As a Manager, you must configure your own API keys to generate content.
+                  These keys are only used for your projects and are not shared with others.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {API_KEY_FIELDS.map((field) => {
         const value = keys[field.type] || ''
@@ -287,12 +311,14 @@ export function AdminApiKeys() {
                 {value && isValid && !isModified && (
                   <p className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
                     <CheckCircle2 className="w-3 h-3" />
-                    Configured and synced to all editors
+                    {isAdmin ? 'Configured and synced to all editors' : 'Configured'}
                   </p>
                 )}
                 {isModified && (
                   <p className="text-xs text-amber-600 dark:text-amber-400">
-                    Unsaved changes - click Save to sync to editors
+                    {isAdmin
+                      ? 'Unsaved changes - click Save to sync to editors'
+                      : 'Unsaved changes - click Save to update'}
                   </p>
                 )}
               </div>
@@ -310,9 +336,9 @@ export function AdminApiKeys() {
                 How API Keys Work
               </p>
               <p className="text-blue-700 dark:text-blue-300 mt-1">
-                API keys you set here are encrypted and stored in the cloud. Editors automatically
-                receive these keys when they start the app. They see masked values (e.g., sk-a•••••••xyz)
-                and cannot view or modify the actual keys.
+                {isAdmin
+                  ? 'API keys you set here are encrypted and stored in the cloud. Editors automatically receive these keys when they start the app. They see masked values (e.g., sk-a•••••••xyz) and cannot view or modify the actual keys.'
+                  : 'Your API keys are encrypted and stored securely. They are used exclusively for your own content generation and are not shared with anyone else.'}
               </p>
             </div>
           </div>

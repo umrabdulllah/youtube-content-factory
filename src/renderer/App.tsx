@@ -130,7 +130,7 @@ function App() {
                         <Route
                           path="/admin/api-keys"
                           element={
-                            <ProtectedRoute requireAdmin>
+                            <ProtectedRoute requireApiKeyAccess>
                               <AdminApiKeys />
                             </ProtectedRoute>
                           }

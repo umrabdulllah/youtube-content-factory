@@ -18,8 +18,35 @@ import {
   type SubtitleGenerationOutput,
 } from './generation'
 import { generatePrompts } from './generation/prompt-generation.service'
-import { getApiKey } from './api-keys.service'
+import { getApiKey, getApiKeyForUser } from './api-keys.service'
 import type { QueueTask, TaskStatus, TaskType } from '@shared/types'
+
+/**
+ * Helper to get API key based on project ownership
+ * - If project has owner_id, use that user's keys (manager)
+ * - If project has no owner_id, use org-wide keys
+ */
+async function getApiKeyForProject(
+  keyType: 'anthropicApi' | 'openaiApi' | 'replicateApi' | 'voiceApi',
+  projectId: string
+): Promise<string | null> {
+  const project = projectsQueries.getProjectById(projectId)
+  if (!project) {
+    return getApiKey(keyType) // Fallback to org keys
+  }
+
+  // Check if project has an owner (manager's project)
+  const db = require('../database').getDatabase()
+  const row = db.prepare('SELECT owner_id FROM projects WHERE id = ?').get(projectId) as { owner_id: string | null } | undefined
+
+  if (row?.owner_id) {
+    // Manager's project - use their personal keys
+    return getApiKeyForUser(keyType, row.owner_id, 'manager')
+  } else {
+    // Org project - use org-wide keys
+    return getApiKey(keyType)
+  }
+}
 
 // ============================================
 // IPC HELPERS
@@ -433,10 +460,11 @@ class QueueManager {
     }
 
     const appSettings = settingsQueries.getSettings()
-    const apiKey = await getApiKey('anthropicApi') || await getApiKey('openaiApi')
+    const apiKey = await getApiKeyForProject('anthropicApi', project.id)
+      || await getApiKeyForProject('openaiApi', project.id)
 
     if (!apiKey) {
-      throw new Error('No API key configured for prompt generation (Anthropic or OpenAI)')
+      throw new Error('No API key configured for prompt generation (Anthropic or OpenAI). Please configure your API keys in Settings.')
     }
 
     const result = await generatePrompts({
@@ -485,7 +513,7 @@ class QueueManager {
     }
 
     const appSettings = settingsQueries.getSettings()
-    const voiceApiKey = await getApiKey('voiceApi')
+    const voiceApiKey = await getApiKeyForProject('voiceApi', project.id)
     const templateId = appSettings.voiceTemplateId
 
     const audioService = createAudioService(voiceApiKey ?? undefined, templateId)
@@ -551,7 +579,7 @@ class QueueManager {
     }
 
     const appSettings = settingsQueries.getSettings()
-    const replicateApiKey = await getApiKey('replicateApi')
+    const replicateApiKey = await getApiKeyForProject('replicateApi', project.id)
 
     const imageService = createImageService(replicateApiKey ?? undefined)
     const result = await imageService.generate(
@@ -609,7 +637,7 @@ class QueueManager {
       throw new Error('Audio file not found. Run audio task first.')
     }
 
-    const openaiApiKey = await getApiKey('openaiApi')
+    const openaiApiKey = await getApiKeyForProject('openaiApi', project.id)
 
     const subtitleService = createSubtitleService(openaiApiKey ?? undefined)
     const result = await subtitleService.generate(

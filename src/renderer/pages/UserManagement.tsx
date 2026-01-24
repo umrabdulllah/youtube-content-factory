@@ -274,6 +274,12 @@ Enter your email, the invite token above, and choose a password to complete your
                             Admin
                           </span>
                         </SelectItem>
+                        <SelectItem value="manager">
+                          <span className="flex items-center gap-2">
+                            <Shield className="w-3 h-3" />
+                            Manager
+                          </span>
+                        </SelectItem>
                         <SelectItem value="editor">
                           <span className="flex items-center gap-2">
                             <Shield className="w-3 h-3" />
@@ -402,6 +408,12 @@ Enter your email, the invite token above, and choose a password to complete your
                       Editor (Channel Manager)
                     </span>
                   </SelectItem>
+                  <SelectItem value="manager">
+                    <span className="flex items-center gap-2">
+                      <Shield className="w-3 h-3" />
+                      Manager (Own API Keys)
+                    </span>
+                  </SelectItem>
                   <SelectItem value="admin">
                     <span className="flex items-center gap-2">
                       <ShieldCheck className="w-3 h-3" />
@@ -413,7 +425,9 @@ Enter your email, the invite token above, and choose a password to complete your
               <p className="text-xs text-text-tertiary">
                 {inviteRole === 'admin'
                   ? 'Admins can manage users, settings, and all content.'
-                  : 'Editors can create and manage projects within their assigned channels.'}
+                  : inviteRole === 'manager'
+                    ? 'Managers have their own API keys and isolated content.'
+                    : 'Editors can create and manage projects within their assigned channels.'}
               </p>
             </div>
           </div>

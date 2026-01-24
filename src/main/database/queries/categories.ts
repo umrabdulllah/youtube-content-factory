@@ -6,7 +6,18 @@ import type {
   CategoryWithStats,
   CreateCategoryInput,
   UpdateCategoryInput,
+  UserRole,
 } from '../../../shared/types'
+
+/**
+ * User context for content isolation
+ * - Admin/Editor: See org content (owner_id IS NULL)
+ * - Manager: See only their own content (owner_id = userId)
+ */
+export interface UserContext {
+  userId: string
+  role: UserRole
+}
 
 function mapRow(row: Record<string, unknown>): Category {
   return {
@@ -30,8 +41,28 @@ function mapRowWithStats(row: Record<string, unknown>): CategoryWithStats {
   }
 }
 
-export function getAllCategories(): CategoryWithStats[] {
+/**
+ * Build WHERE clause for owner_id filtering based on user role
+ */
+function buildOwnerFilter(userContext?: UserContext): { clause: string; params: unknown[] } {
+  if (!userContext) {
+    // No context = legacy behavior, show all (for backwards compatibility)
+    return { clause: '', params: [] }
+  }
+
+  if (userContext.role === 'manager') {
+    // Managers see only their own content
+    return { clause: 'WHERE c.owner_id = ?', params: [userContext.userId] }
+  } else {
+    // Admin/Editor see org content (owner_id IS NULL)
+    return { clause: 'WHERE c.owner_id IS NULL', params: [] }
+  }
+}
+
+export function getAllCategories(userContext?: UserContext): CategoryWithStats[] {
   const db = getDatabase()
+  const { clause, params } = buildOwnerFilter(userContext)
+
   const rows = db.prepare(`
     SELECT
       c.*,
@@ -40,9 +71,10 @@ export function getAllCategories(): CategoryWithStats[] {
     FROM categories c
     LEFT JOIN channels ch ON ch.category_id = c.id
     LEFT JOIN projects p ON p.channel_id = ch.id
+    ${clause}
     GROUP BY c.id
     ORDER BY c.sort_order ASC, c.created_at ASC
-  `).all() as Record<string, unknown>[]
+  `).all(...params) as Record<string, unknown>[]
 
   return rows.map(mapRowWithStats)
 }
@@ -87,11 +119,14 @@ function generateUniqueCategorySlug(
   return `${baseSlug}-${suffix}`
 }
 
-export function createCategory(input: CreateCategoryInput): Category {
+export function createCategory(input: CreateCategoryInput, userContext?: UserContext): Category {
   const db = getDatabase()
   const id = uuid()
   const slug = generateUniqueCategorySlug(input.name)
   const now = new Date().toISOString()
+
+  // Set owner_id based on role: managers own their content, others create org content
+  const ownerId = userContext?.role === 'manager' ? userContext.userId : null
 
   // Get max sort order
   const maxOrder = db.prepare(`
@@ -99,8 +134,8 @@ export function createCategory(input: CreateCategoryInput): Category {
   `).get() as { max_order: number }
 
   db.prepare(`
-    INSERT INTO categories (id, name, slug, description, color, icon, sort_order, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO categories (id, name, slug, description, color, icon, sort_order, owner_id, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     input.name,
@@ -109,6 +144,7 @@ export function createCategory(input: CreateCategoryInput): Category {
     input.color || '#6366f1',
     input.icon || 'folder',
     maxOrder.max_order + 1,
+    ownerId,
     now,
     now
   )

@@ -15,8 +15,8 @@ import { generatePrompts, type PromptBatch, type PromptProgress } from './prompt
 import { createImageService, type ReplicateImageService } from './image.service'
 import { createAudioService, type RussianTTSService } from './audio.service'
 import { createSubtitleService, type OpenAIWhisperService } from './subtitle.service'
-import { getApiKey } from '../api-keys.service'
-import type { AppSettings } from '../../../shared/types'
+import { getApiKeyForUser } from '../api-keys.service'
+import type { AppSettings, UserRole } from '../../../shared/types'
 import type { ProgressCallback } from './types'
 
 // ============================================
@@ -28,6 +28,10 @@ export interface PipelineInput {
   projectPath: string
   script: string
   settings: AppSettings
+  /** User ID for API key retrieval */
+  userId?: string
+  /** User role for API key retrieval */
+  userRole?: UserRole
 }
 
 export interface PipelineProgress {
@@ -107,11 +111,24 @@ export class PipelineOrchestrator extends EventEmitter {
     let audioPath: string | null = null
     let subtitlePath: string | null = null
 
-    // Get API keys (with cloud fallback for editors)
-    const promptApiKey = await getApiKey('anthropicApi') || await getApiKey('openaiApi')
-    const replicateApiKey = await getApiKey('replicateApi')
-    const voiceApiKey = await getApiKey('voiceApi')
-    const openaiApiKey = await getApiKey('openaiApi')
+    // Get API keys based on user role
+    // - Admin/Editor: Use org-wide keys
+    // - Manager: Use personal keys (no fallback)
+    const userId = input.userId || ''
+    const userRole = input.userRole || 'editor'
+
+    const promptApiKey = await getApiKeyForUser('anthropicApi', userId, userRole)
+      || await getApiKeyForUser('openaiApi', userId, userRole)
+    const replicateApiKey = await getApiKeyForUser('replicateApi', userId, userRole)
+    const voiceApiKey = await getApiKeyForUser('voiceApi', userId, userRole)
+    const openaiApiKey = await getApiKeyForUser('openaiApi', userId, userRole)
+
+    // Validate manager has required keys
+    if (userRole === 'manager') {
+      if (!promptApiKey) {
+        throw new Error('You must configure an Anthropic or OpenAI API key before generating content. Go to Settings > API Keys.')
+      }
+    }
 
     try {
       progress.phase = 'generating'

@@ -1,6 +1,7 @@
 import { ipcMain, shell } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc-channels'
 import * as projectsQueries from '../database/queries/projects'
+import type { UserContext } from '../database/queries/projects'
 import * as channelsQueries from '../database/queries/channels'
 import * as categoriesQueries from '../database/queries/categories'
 import * as queueQueries from '../database/queries/queue'
@@ -8,12 +9,39 @@ import { fileManager } from '../services/file-manager'
 import { queueManager } from '../services/queue-manager'
 import { validateImageName } from '../utils/path-validation'
 import { handleIpcError } from '../utils/ipc-error-handler'
-import type { CreateProjectInput, UpdateProjectInput } from '../../shared/types'
+import { getSupabase, isSupabaseConfigured } from '../services/supabase'
+import type { CreateProjectInput, UpdateProjectInput, UserRole } from '../../shared/types'
+
+/**
+ * Get current user context (userId and role)
+ */
+async function getCurrentUserContext(): Promise<UserContext | undefined> {
+  if (!isSupabaseConfigured()) return undefined
+
+  try {
+    const supabase = getSupabase()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return undefined
+
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    if (!profile) return undefined
+
+    return { userId: user.id, role: profile.role as UserRole }
+  } catch {
+    return undefined
+  }
+}
 
 export function registerProjectsHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.PROJECTS.GET_ALL, async () => {
     return handleIpcError(async () => {
-      return projectsQueries.getAllProjects()
+      const userContext = await getCurrentUserContext()
+      return projectsQueries.getAllProjects(userContext)
     })
   })
 
@@ -31,6 +59,8 @@ export function registerProjectsHandlers(): void {
 
   ipcMain.handle(IPC_CHANNELS.PROJECTS.CREATE, async (_, input: CreateProjectInput) => {
     return handleIpcError(async () => {
+      const userContext = await getCurrentUserContext()
+
       // Validate required fields
       if (!input.channelId || typeof input.channelId !== 'string') {
         throw new Error('Channel ID is required')
@@ -51,8 +81,8 @@ export function registerProjectsHandlers(): void {
         throw new Error(`Category not found: ${channel.categoryId}`)
       }
 
-      // Create DB record first
-      const project = projectsQueries.createProject(input)
+      // Create DB record first (with owner_id for managers)
+      const project = projectsQueries.createProject(input, userContext)
 
       try {
         // Then create directory structure on disk

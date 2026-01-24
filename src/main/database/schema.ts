@@ -193,13 +193,25 @@ export function createSchema(db: Database.Database): void {
       ('api_keys', 0, 0)
   `)
 
-  // Cached API keys table - stores encrypted API keys locally for offline use
+  // Cached API keys table - stores encrypted API keys locally for offline use (org-wide)
   db.exec(`
     CREATE TABLE IF NOT EXISTS cached_api_keys (
       key_type TEXT PRIMARY KEY,
       encrypted_value TEXT NOT NULL,
       cached_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       expires_at DATETIME
+    )
+  `)
+
+  // User cached API keys table - stores per-user encrypted API keys for managers
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_cached_api_keys (
+      user_id TEXT NOT NULL,
+      key_type TEXT NOT NULL,
+      encrypted_value TEXT NOT NULL,
+      cached_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      expires_at DATETIME,
+      PRIMARY KEY (user_id, key_type)
     )
   `)
 
@@ -225,6 +237,21 @@ export function createSchema(db: Database.Database): void {
     db.exec('ALTER TABLE channels ADD COLUMN is_cloud_synced INTEGER DEFAULT 0')
   }
 
+  // Add owner_id column to categories for manager content isolation
+  if (!existingCategoryColumns.has('owner_id')) {
+    db.exec('ALTER TABLE categories ADD COLUMN owner_id TEXT')
+  }
+
+  // Add owner_id column to channels for manager content isolation
+  if (!existingChannelColumns.has('owner_id')) {
+    db.exec('ALTER TABLE channels ADD COLUMN owner_id TEXT')
+  }
+
+  // Add owner_id column to projects for manager content isolation
+  if (!existingProjectColumns.has('owner_id')) {
+    db.exec('ALTER TABLE projects ADD COLUMN owner_id TEXT')
+  }
+
   // Create indexes
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_channels_category ON channels(category_id);
@@ -239,6 +266,10 @@ export function createSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_sync_tracking_needs_sync ON project_sync_tracking(needs_sync);
     CREATE INDEX IF NOT EXISTS idx_categories_cloud_id ON categories(cloud_id);
     CREATE INDEX IF NOT EXISTS idx_channels_cloud_id ON channels(cloud_id);
+    CREATE INDEX IF NOT EXISTS idx_categories_owner ON categories(owner_id);
+    CREATE INDEX IF NOT EXISTS idx_channels_owner ON channels(owner_id);
+    CREATE INDEX IF NOT EXISTS idx_projects_owner ON projects(owner_id);
+    CREATE INDEX IF NOT EXISTS idx_user_cached_api_keys_user ON user_cached_api_keys(user_id);
   `)
 
   console.log('Database schema created successfully')

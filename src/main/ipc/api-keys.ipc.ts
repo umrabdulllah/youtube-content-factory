@@ -1,5 +1,10 @@
 /**
- * IPC handlers for centralized API key management
+ * IPC handlers for API key management
+ *
+ * Role-based access:
+ * - Admin: Manages org-wide keys (shared with editors)
+ * - Manager: Manages personal keys (isolated, no fallback)
+ * - Editor: Read-only access to masked org-wide keys
  */
 
 import { ipcMain } from 'electron'
@@ -7,13 +12,42 @@ import { IPC_CHANNELS } from '../../shared/ipc-channels'
 import { handleIpcError } from '../utils/ipc-error-handler'
 import { getSupabase, isSupabaseConfigured } from '../services/supabase'
 import * as apiKeysService from '../services/api-keys.service'
-import type { ApiKeyType } from '../../shared/types'
+import type { ApiKeyType, UserRole } from '../../shared/types'
+
+/**
+ * Helper to get current user context
+ */
+async function getCurrentUserContext(): Promise<{ userId: string; role: UserRole }> {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase not configured')
+  }
+
+  const supabase = getSupabase()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) {
+    throw new Error('Not authenticated')
+  }
+
+  const { data: profile } = await supabase
+    .from('user_profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single()
+
+  if (!profile) {
+    throw new Error('User profile not found')
+  }
+
+  return { userId: user.id, role: profile.role as UserRole }
+}
 
 export function registerApiKeysHandlers(): void {
   /**
    * Get all API keys
-   * Admin: Returns full key values
-   * Editor: Returns masked values
+   * Admin: Returns full org-wide key values
+   * Manager: Returns full personal key values
+   * Editor: Returns masked org-wide values
    */
   ipcMain.handle(IPC_CHANNELS.API_KEYS.GET_ALL, async () => {
     return handleIpcError(async () => {
@@ -27,25 +61,16 @@ export function registerApiKeysHandlers(): void {
         }
       }
 
-      const supabase = getSupabase()
-      const { data: { user } } = await supabase.auth.getUser()
+      const { userId, role } = await getCurrentUserContext()
 
-      if (!user) {
-        throw new Error('Not authenticated')
-      }
-
-      // Check user role
-      const { data: profile } = await supabase
-        .from('user_profiles')
-        .select('role')
-        .eq('id', user.id)
-        .single()
-
-      if (profile?.role === 'admin') {
-        // Admin gets full keys
+      if (role === 'admin') {
+        // Admin gets full org-wide keys
         return apiKeysService.getAllKeysForAdmin()
+      } else if (role === 'manager') {
+        // Manager gets full personal keys
+        return apiKeysService.getAllKeysForUser(userId, role)
       } else {
-        // Editor gets masked keys
+        // Editor gets masked org-wide keys
         return apiKeysService.getMaskedKeys()
       }
     })
@@ -56,7 +81,17 @@ export function registerApiKeysHandlers(): void {
    */
   ipcMain.handle(IPC_CHANNELS.API_KEYS.GET_MASKED, async () => {
     return handleIpcError(async () => {
-      return apiKeysService.getMaskedKeys()
+      if (!isSupabaseConfigured()) {
+        return {
+          anthropicApi: null,
+          openaiApi: null,
+          replicateApi: null,
+          voiceApi: null,
+        }
+      }
+
+      const { userId, role } = await getCurrentUserContext()
+      return apiKeysService.getMaskedKeysForUser(userId, role)
     })
   })
 
@@ -65,12 +100,25 @@ export function registerApiKeysHandlers(): void {
    */
   ipcMain.handle(IPC_CHANNELS.API_KEYS.GET_STATUS, async () => {
     return handleIpcError(async () => {
-      return apiKeysService.getKeyStatus()
+      if (!isSupabaseConfigured()) {
+        return {
+          anthropicApi: false,
+          openaiApi: false,
+          replicateApi: false,
+          voiceApi: false,
+        }
+      }
+
+      const { userId, role } = await getCurrentUserContext()
+      return apiKeysService.getKeyStatusForUser(userId, role)
     })
   })
 
   /**
-   * Set an API key (Admin only)
+   * Set an API key
+   * Admin: Sets org-wide key
+   * Manager: Sets personal key
+   * Editor: Not allowed
    */
   ipcMain.handle(
     IPC_CHANNELS.API_KEYS.SET,
@@ -89,14 +137,28 @@ export function registerApiKeysHandlers(): void {
           throw new Error('API key value is required')
         }
 
-        await apiKeysService.setApiKey(keyType, value.trim())
+        const { userId, role } = await getCurrentUserContext()
+
+        if (role === 'admin') {
+          // Admin sets org-wide keys
+          await apiKeysService.setApiKey(keyType, value.trim())
+        } else if (role === 'manager') {
+          // Manager sets personal keys
+          await apiKeysService.setUserApiKey(userId, keyType, value.trim())
+        } else {
+          throw new Error('Only admins and managers can set API keys')
+        }
+
         return { success: true }
       })
     }
   )
 
   /**
-   * Delete an API key (Admin only)
+   * Delete an API key
+   * Admin: Deletes org-wide key
+   * Manager: Deletes personal key
+   * Editor: Not allowed
    */
   ipcMain.handle(IPC_CHANNELS.API_KEYS.DELETE, async (_, keyType: ApiKeyType) => {
     return handleIpcError(async () => {
@@ -104,7 +166,18 @@ export function registerApiKeysHandlers(): void {
         throw new Error('Invalid key type')
       }
 
-      await apiKeysService.deleteApiKey(keyType)
+      const { userId, role } = await getCurrentUserContext()
+
+      if (role === 'admin') {
+        // Admin deletes org-wide keys
+        await apiKeysService.deleteApiKey(keyType)
+      } else if (role === 'manager') {
+        // Manager deletes personal keys
+        await apiKeysService.deleteUserApiKey(userId, keyType)
+      } else {
+        throw new Error('Only admins and managers can delete API keys')
+      }
+
       return { success: true }
     })
   })
@@ -114,7 +187,20 @@ export function registerApiKeysHandlers(): void {
    */
   ipcMain.handle(IPC_CHANNELS.API_KEYS.REFRESH_CACHE, async () => {
     return handleIpcError(async () => {
-      await apiKeysService.refreshFromCloud()
+      if (!isSupabaseConfigured()) {
+        return { success: true }
+      }
+
+      const { userId, role } = await getCurrentUserContext()
+
+      if (role === 'manager') {
+        // Manager refreshes personal keys
+        await apiKeysService.refreshUserKeysFromCloud(userId)
+      } else {
+        // Admin/Editor refreshes org-wide keys
+        await apiKeysService.refreshFromCloud()
+      }
+
       return { success: true }
     })
   })

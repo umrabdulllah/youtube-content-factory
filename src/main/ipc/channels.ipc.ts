@@ -1,23 +1,25 @@
 import { ipcMain } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc-channels'
 import * as channelsQueries from '../database/queries/channels'
+import type { UserContext } from '../database/queries/channels'
 import * as categoriesQueries from '../database/queries/categories'
 import { fileManager } from '../services/file-manager'
 import { handleIpcError } from '../utils/ipc-error-handler'
 import { getSupabase, isSupabaseConfigured } from '../services/supabase'
 import * as cloudSyncService from '../services/category-channel-sync.service'
-import type { CreateChannelInput, UpdateChannelInput } from '../../shared/types'
+import type { CreateChannelInput, UpdateChannelInput, UserRole } from '../../shared/types'
+import { hasPermission } from '../../shared/permissions'
 
 /**
- * Check if current user is admin
+ * Get current user context (userId and role)
  */
-async function isCurrentUserAdmin(): Promise<boolean> {
-  if (!isSupabaseConfigured()) return true // Default to admin if no auth
+async function getCurrentUserContext(): Promise<UserContext | undefined> {
+  if (!isSupabaseConfigured()) return undefined
 
   try {
     const supabase = getSupabase()
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return false
+    if (!user) return undefined
 
     const { data: profile } = await supabase
       .from('user_profiles')
@@ -25,16 +27,32 @@ async function isCurrentUserAdmin(): Promise<boolean> {
       .eq('id', user.id)
       .single()
 
-    return profile?.role === 'admin'
+    if (!profile) return undefined
+
+    return { userId: user.id, role: profile.role as UserRole }
   } catch {
-    return false
+    return undefined
   }
+}
+
+/**
+ * Check if current user can create/modify channels
+ */
+async function canManageChannels(): Promise<{ allowed: boolean; userContext?: UserContext }> {
+  const userContext = await getCurrentUserContext()
+  if (!userContext) {
+    return { allowed: true }
+  }
+
+  const allowed = hasPermission(userContext.role, 'channels:create')
+  return { allowed, userContext }
 }
 
 export function registerChannelsHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.CHANNELS.GET_ALL, async () => {
     return handleIpcError(async () => {
-      return channelsQueries.getAllChannels()
+      const userContext = await getCurrentUserContext()
+      return channelsQueries.getAllChannels(userContext)
     })
   })
 
@@ -52,10 +70,10 @@ export function registerChannelsHandlers(): void {
 
   ipcMain.handle(IPC_CHANNELS.CHANNELS.CREATE, async (_, input: CreateChannelInput) => {
     return handleIpcError(async () => {
-      // Check if user is admin (only admins can create channels)
-      const isAdmin = await isCurrentUserAdmin()
-      if (!isAdmin) {
-        throw new Error('Only admins can create channels')
+      // Check if user can create channels (admin or manager)
+      const { allowed, userContext } = await canManageChannels()
+      if (!allowed) {
+        throw new Error('You do not have permission to create channels')
       }
 
       // Validate required fields
@@ -66,7 +84,7 @@ export function registerChannelsHandlers(): void {
         throw new Error('Category ID is required')
       }
 
-      const channel = channelsQueries.createChannel(input)
+      const channel = channelsQueries.createChannel(input, userContext)
       const category = categoriesQueries.getCategoryById(input.categoryId)
 
       if (category) {
@@ -74,11 +92,13 @@ export function registerChannelsHandlers(): void {
         await fileManager.createChannelDirectory(category.slug, channel)
       }
 
-      // Push to cloud for sync with editors
-      try {
-        await cloudSyncService.pushChannel(channel)
-      } catch (error) {
-        console.error('[Channels] Failed to push to cloud:', error)
+      // Push to cloud for sync (only for org content, not manager content)
+      if (!userContext || userContext.role !== 'manager') {
+        try {
+          await cloudSyncService.pushChannel(channel)
+        } catch (error) {
+          console.error('[Channels] Failed to push to cloud:', error)
+        }
       }
 
       return channel
@@ -87,10 +107,10 @@ export function registerChannelsHandlers(): void {
 
   ipcMain.handle(IPC_CHANNELS.CHANNELS.UPDATE, async (_, input: UpdateChannelInput) => {
     return handleIpcError(async () => {
-      // Check if user is admin (only admins can update channels)
-      const isAdmin = await isCurrentUserAdmin()
-      if (!isAdmin) {
-        throw new Error('Only admins can update channels')
+      // Check if user can update channels
+      const { allowed, userContext } = await canManageChannels()
+      if (!allowed) {
+        throw new Error('You do not have permission to update channels')
       }
 
       // Validate required fields
@@ -118,11 +138,13 @@ export function registerChannelsHandlers(): void {
         }
       }
 
-      // Push to cloud for sync with editors
-      try {
-        await cloudSyncService.pushChannel(channel)
-      } catch (error) {
-        console.error('[Channels] Failed to push update to cloud:', error)
+      // Push to cloud for sync (only for org content, not manager content)
+      if (!userContext || userContext.role !== 'manager') {
+        try {
+          await cloudSyncService.pushChannel(channel)
+        } catch (error) {
+          console.error('[Channels] Failed to push update to cloud:', error)
+        }
       }
 
       return channel
@@ -131,10 +153,10 @@ export function registerChannelsHandlers(): void {
 
   ipcMain.handle(IPC_CHANNELS.CHANNELS.DELETE, async (_, id: string) => {
     return handleIpcError(async () => {
-      // Check if user is admin (only admins can delete channels)
-      const isAdmin = await isCurrentUserAdmin()
-      if (!isAdmin) {
-        throw new Error('Only admins can delete channels')
+      // Check if user can delete channels (admin or manager)
+      const { allowed, userContext } = await canManageChannels()
+      if (!allowed) {
+        throw new Error('You do not have permission to delete channels')
       }
 
       const channel = channelsQueries.getChannelById(id)
@@ -148,11 +170,13 @@ export function registerChannelsHandlers(): void {
         }
       }
 
-      // Delete from cloud first
-      try {
-        await cloudSyncService.deleteCloudChannel(id)
-      } catch (error) {
-        console.error('[Channels] Failed to delete from cloud:', error)
+      // Delete from cloud (only for org content, not manager content)
+      if (!userContext || userContext.role !== 'manager') {
+        try {
+          await cloudSyncService.deleteCloudChannel(id)
+        } catch (error) {
+          console.error('[Channels] Failed to delete from cloud:', error)
+        }
       }
 
       channelsQueries.deleteChannel(id)

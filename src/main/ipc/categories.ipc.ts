@@ -1,22 +1,24 @@
 import { ipcMain } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc-channels'
 import * as categoriesQueries from '../database/queries/categories'
+import type { UserContext } from '../database/queries/categories'
 import { fileManager } from '../services/file-manager'
 import { handleIpcError } from '../utils/ipc-error-handler'
 import { getSupabase, isSupabaseConfigured } from '../services/supabase'
 import * as cloudSyncService from '../services/category-channel-sync.service'
-import type { CreateCategoryInput, UpdateCategoryInput } from '../../shared/types'
+import type { CreateCategoryInput, UpdateCategoryInput, UserRole } from '../../shared/types'
+import { hasPermission } from '../../shared/permissions'
 
 /**
- * Check if current user is admin
+ * Get current user context (userId and role)
  */
-async function isCurrentUserAdmin(): Promise<boolean> {
-  if (!isSupabaseConfigured()) return true // Default to admin if no auth
+async function getCurrentUserContext(): Promise<UserContext | undefined> {
+  if (!isSupabaseConfigured()) return undefined // No auth configured
 
   try {
     const supabase = getSupabase()
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return false
+    if (!user) return undefined
 
     const { data: profile } = await supabase
       .from('user_profiles')
@@ -24,16 +26,33 @@ async function isCurrentUserAdmin(): Promise<boolean> {
       .eq('id', user.id)
       .single()
 
-    return profile?.role === 'admin'
+    if (!profile) return undefined
+
+    return { userId: user.id, role: profile.role as UserRole }
   } catch {
-    return false
+    return undefined
   }
+}
+
+/**
+ * Check if current user can create/modify categories
+ */
+async function canManageCategories(): Promise<{ allowed: boolean; userContext?: UserContext }> {
+  const userContext = await getCurrentUserContext()
+  if (!userContext) {
+    // No auth = allow (backwards compatibility)
+    return { allowed: true }
+  }
+
+  const allowed = hasPermission(userContext.role, 'categories:create')
+  return { allowed, userContext }
 }
 
 export function registerCategoriesHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.CATEGORIES.GET_ALL, async () => {
     return handleIpcError(async () => {
-      return categoriesQueries.getAllCategories()
+      const userContext = await getCurrentUserContext()
+      return categoriesQueries.getAllCategories(userContext)
     })
   })
 
@@ -45,10 +64,10 @@ export function registerCategoriesHandlers(): void {
 
   ipcMain.handle(IPC_CHANNELS.CATEGORIES.CREATE, async (_, input: CreateCategoryInput) => {
     return handleIpcError(async () => {
-      // Check if user is admin (only admins can create categories)
-      const isAdmin = await isCurrentUserAdmin()
-      if (!isAdmin) {
-        throw new Error('Only admins can create categories')
+      // Check if user can create categories (admin or manager)
+      const { allowed, userContext } = await canManageCategories()
+      if (!allowed) {
+        throw new Error('You do not have permission to create categories')
       }
 
       // Validate required fields
@@ -56,17 +75,19 @@ export function registerCategoriesHandlers(): void {
         throw new Error('Category name is required')
       }
 
-      const category = categoriesQueries.createCategory(input)
+      const category = categoriesQueries.createCategory(input, userContext)
 
       // Create category directory on disk
       await fileManager.createCategoryDirectory(category)
 
-      // Push to cloud for sync with editors
-      try {
-        await cloudSyncService.pushCategory(category)
-      } catch (error) {
-        console.error('[Categories] Failed to push to cloud:', error)
-        // Don't fail the operation if cloud sync fails
+      // Push to cloud for sync (only for org content, not manager content)
+      if (!userContext || userContext.role !== 'manager') {
+        try {
+          await cloudSyncService.pushCategory(category)
+        } catch (error) {
+          console.error('[Categories] Failed to push to cloud:', error)
+          // Don't fail the operation if cloud sync fails
+        }
       }
 
       return category
@@ -75,10 +96,10 @@ export function registerCategoriesHandlers(): void {
 
   ipcMain.handle(IPC_CHANNELS.CATEGORIES.UPDATE, async (_, input: UpdateCategoryInput) => {
     return handleIpcError(async () => {
-      // Check if user is admin (only admins can update categories)
-      const isAdmin = await isCurrentUserAdmin()
-      if (!isAdmin) {
-        throw new Error('Only admins can update categories')
+      // Check if user can update categories (admin or manager)
+      const { allowed, userContext } = await canManageCategories()
+      if (!allowed) {
+        throw new Error('You do not have permission to update categories')
       }
 
       // Validate required fields
@@ -100,11 +121,13 @@ export function registerCategoriesHandlers(): void {
       // Update category.json
       await fileManager.updateCategoryMetadata(category)
 
-      // Push to cloud for sync with editors
-      try {
-        await cloudSyncService.pushCategory(category)
-      } catch (error) {
-        console.error('[Categories] Failed to push update to cloud:', error)
+      // Push to cloud for sync (only for org content, not manager content)
+      if (!userContext || userContext.role !== 'manager') {
+        try {
+          await cloudSyncService.pushCategory(category)
+        } catch (error) {
+          console.error('[Categories] Failed to push update to cloud:', error)
+        }
       }
 
       return category
@@ -113,10 +136,10 @@ export function registerCategoriesHandlers(): void {
 
   ipcMain.handle(IPC_CHANNELS.CATEGORIES.DELETE, async (_, id: string) => {
     return handleIpcError(async () => {
-      // Check if user is admin (only admins can delete categories)
-      const isAdmin = await isCurrentUserAdmin()
-      if (!isAdmin) {
-        throw new Error('Only admins can delete categories')
+      // Check if user can delete categories (admin or manager)
+      const { allowed, userContext } = await canManageCategories()
+      if (!allowed) {
+        throw new Error('You do not have permission to delete categories')
       }
 
       const category = categoriesQueries.getCategoryById(id)
@@ -125,11 +148,13 @@ export function registerCategoriesHandlers(): void {
         await fileManager.deleteCategoryDirectory(category.slug)
       }
 
-      // Delete from cloud first
-      try {
-        await cloudSyncService.deleteCloudCategory(id)
-      } catch (error) {
-        console.error('[Categories] Failed to delete from cloud:', error)
+      // Delete from cloud (only for org content, not manager content)
+      if (!userContext || userContext.role !== 'manager') {
+        try {
+          await cloudSyncService.deleteCloudCategory(id)
+        } catch (error) {
+          console.error('[Categories] Failed to delete from cloud:', error)
+        }
       }
 
       categoriesQueries.deleteCategory(id)
@@ -139,10 +164,10 @@ export function registerCategoriesHandlers(): void {
 
   ipcMain.handle(IPC_CHANNELS.CATEGORIES.REORDER, async (_, ids: string[]) => {
     return handleIpcError(async () => {
-      // Check if user is admin (only admins can reorder categories)
-      const isAdmin = await isCurrentUserAdmin()
-      if (!isAdmin) {
-        throw new Error('Only admins can reorder categories')
+      // Check if user can reorder categories (admin or manager)
+      const { allowed, userContext } = await canManageCategories()
+      if (!allowed) {
+        throw new Error('You do not have permission to reorder categories')
       }
 
       // Validate ids is an array of strings
@@ -152,11 +177,13 @@ export function registerCategoriesHandlers(): void {
 
       categoriesQueries.reorderCategories(ids)
 
-      // Update order in cloud
-      try {
-        await cloudSyncService.reorderCloudCategories(ids)
-      } catch (error) {
-        console.error('[Categories] Failed to reorder in cloud:', error)
+      // Update order in cloud (only for org content, not manager content)
+      if (!userContext || userContext.role !== 'manager') {
+        try {
+          await cloudSyncService.reorderCloudCategories(ids)
+        } catch (error) {
+          console.error('[Categories] Failed to reorder in cloud:', error)
+        }
       }
 
       return { reordered: true }

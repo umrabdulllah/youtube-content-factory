@@ -1,5 +1,5 @@
 // User role enum
-export type UserRole = 'admin' | 'editor'
+export type UserRole = 'admin' | 'editor' | 'manager'
 
 // User profile from Supabase
 export interface UserProfile {
