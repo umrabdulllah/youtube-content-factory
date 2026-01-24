@@ -3,10 +3,59 @@ import { IPC_CHANNELS } from '../../shared/ipc-channels'
 import * as settingsQueries from '../database/queries/settings'
 import { validateBasePath } from '../utils/path-validation'
 import { handleIpcError } from '../utils/ipc-error-handler'
-import { getApiKey } from '../services/api-keys.service'
-import type { AppSettings, VoiceTemplate } from '../../shared/types'
+import { getApiKey, getApiKeyForUser } from '../services/api-keys.service'
+import { getSupabase, isSupabaseConfigured } from '../services/supabase'
+import type { AppSettings, VoiceTemplate, UserRole } from '../../shared/types'
 
 const VOICE_API_BASE_URL = 'https://voiceapi.csv666.ru'
+
+interface UserContext {
+  userId: string
+  role: UserRole
+}
+
+/**
+ * Get current user context (userId and role)
+ */
+async function getCurrentUserContext(): Promise<UserContext | undefined> {
+  if (!isSupabaseConfigured()) return undefined
+
+  try {
+    const supabase = getSupabase()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return undefined
+
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    if (!profile) return undefined
+
+    return { userId: user.id, role: profile.role as UserRole }
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Get the effective voice API key based on user role
+ * - Admin/Editor: Use org-wide keys
+ * - Manager: Use personal keys only
+ */
+async function getEffectiveVoiceApiKey(providedKey: string): Promise<string> {
+  if (providedKey) return providedKey
+
+  const userContext = await getCurrentUserContext()
+  if (userContext) {
+    // Use role-aware key retrieval
+    return await getApiKeyForUser('voiceApi', userContext.userId, userContext.role) || ''
+  } else {
+    // Fallback for non-authenticated users
+    return await getApiKey('voiceApi') || ''
+  }
+}
 
 export function registerSettingsHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.SETTINGS.GET, async () => {
@@ -95,11 +144,8 @@ export function registerSettingsHandlers(): void {
   // Fetch voice templates from the Russian TTS API
   ipcMain.handle(IPC_CHANNELS.SETTINGS.FETCH_VOICE_TEMPLATES, async (_, apiKey: string) => {
     return handleIpcError(async () => {
-      // Use provided key or fall back to cached cloud key for editors
-      let effectiveKey = apiKey
-      if (!effectiveKey) {
-        effectiveKey = await getApiKey('voiceApi') || ''
-      }
+      // Use provided key or role-aware key retrieval (managers use their own keys)
+      const effectiveKey = await getEffectiveVoiceApiKey(apiKey)
       if (!effectiveKey) {
         throw new Error('API key is required')
       }
@@ -154,11 +200,8 @@ export function registerSettingsHandlers(): void {
   // Check voice API balance
   ipcMain.handle(IPC_CHANNELS.SETTINGS.CHECK_VOICE_BALANCE, async (_, apiKey: string) => {
     return handleIpcError(async () => {
-      // Use provided key or fall back to cached cloud key for editors
-      let effectiveKey = apiKey
-      if (!effectiveKey) {
-        effectiveKey = await getApiKey('voiceApi') || ''
-      }
+      // Use provided key or role-aware key retrieval (managers use their own keys)
+      const effectiveKey = await getEffectiveVoiceApiKey(apiKey)
       if (!effectiveKey) {
         throw new Error('API key is required')
       }

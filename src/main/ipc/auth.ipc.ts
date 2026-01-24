@@ -21,7 +21,7 @@ function transformUserProfile(row: Record<string, unknown>): UserProfile {
     id: row.id as string,
     email: row.email as string,
     displayName: row.display_name as string | null,
-    role: row.role as 'admin' | 'editor',
+    role: row.role as 'admin' | 'editor' | 'manager',
     invitedBy: row.invited_by as string | null,
     invitedAt: row.invited_at as string | null,
     createdAt: row.created_at as string,

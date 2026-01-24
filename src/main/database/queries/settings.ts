@@ -48,6 +48,8 @@ export function setSettings(settings: Partial<AppSettings>): void {
 
   db.transaction(() => {
     for (const [key, value] of Object.entries(settings)) {
+      // Skip undefined values to avoid NOT NULL constraint violation
+      if (value === undefined) continue
       stmt.run(key, JSON.stringify(value), now)
     }
   })()
