@@ -92,8 +92,8 @@ export function registerChannelsHandlers(): void {
         await fileManager.createChannelDirectory(category.slug, channel)
       }
 
-      // Push to cloud for sync (only for org content, not manager content)
-      if (!userContext || userContext.role !== 'manager') {
+      // Push to cloud for sync (all authenticated users)
+      if (userContext) {
         try {
           await cloudSyncService.pushChannel(channel)
         } catch (error) {
@@ -138,8 +138,8 @@ export function registerChannelsHandlers(): void {
         }
       }
 
-      // Push to cloud for sync (only for org content, not manager content)
-      if (!userContext || userContext.role !== 'manager') {
+      // Push to cloud for sync (all authenticated users)
+      if (userContext) {
         try {
           await cloudSyncService.pushChannel(channel)
         } catch (error) {
@@ -170,8 +170,8 @@ export function registerChannelsHandlers(): void {
         }
       }
 
-      // Delete from cloud (only for org content, not manager content)
-      if (!userContext || userContext.role !== 'manager') {
+      // Delete from cloud (all authenticated users)
+      if (userContext) {
         try {
           await cloudSyncService.deleteCloudChannel(id)
         } catch (error) {

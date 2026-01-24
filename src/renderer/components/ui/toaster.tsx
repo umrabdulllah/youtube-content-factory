@@ -136,7 +136,8 @@ export function useToast() {
   return React.useContext(ToastContext)
 }
 
-export function Toaster() {
+// Provider component that manages toast state - wrap your app with this
+export function ToastContextProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = React.useState<ToastData[]>([])
 
   const toast = React.useCallback((data: Omit<ToastData, 'id'>) => {
@@ -154,20 +155,29 @@ export function Toaster() {
 
   return (
     <ToastContext.Provider value={{ toasts, toast, dismiss }}>
-      <ToastProvider>
-        {toasts.map((t) => (
-          <Toast key={t.id} variant={t.variant}>
-            <div className="grid gap-1">
-              {t.title && <ToastTitle>{t.title}</ToastTitle>}
-              {t.description && <ToastDescription>{t.description}</ToastDescription>}
-            </div>
-            {t.action}
-            <ToastClose onClick={() => dismiss(t.id)} />
-          </Toast>
-        ))}
-        <ToastViewport />
-      </ToastProvider>
+      {children}
     </ToastContext.Provider>
+  )
+}
+
+// Renderer component that displays toasts - place this anywhere in the tree (must be inside ToastProvider)
+export function Toaster() {
+  const { toasts, dismiss } = useToast()
+
+  return (
+    <ToastPrimitive.Provider>
+      {toasts.map((t) => (
+        <Toast key={t.id} variant={t.variant}>
+          <div className="grid gap-1">
+            {t.title && <ToastTitle>{t.title}</ToastTitle>}
+            {t.description && <ToastDescription>{t.description}</ToastDescription>}
+          </div>
+          {t.action}
+          <ToastClose onClick={() => dismiss(t.id)} />
+        </Toast>
+      ))}
+      <ToastViewport />
+    </ToastPrimitive.Provider>
   )
 }
 

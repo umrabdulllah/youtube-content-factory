@@ -13,12 +13,15 @@ import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
 import { Textarea } from '../components/ui/textarea'
 import { useToast } from '../components/ui/toaster'
+import { useAuth } from '../contexts/AuthContext'
 import type { Category, Channel, CreateChannelInput } from '@shared/types'
 
 export function CategoryDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { toast } = useToast()
+  const { isAdmin, isManager } = useAuth()
+  const canManageContent = isAdmin || isManager
   const [category, setCategory] = React.useState<Category | null>(null)
   const [channels, setChannels] = React.useState<Channel[]>([])
   const [loading, setLoading] = React.useState(true)
@@ -155,10 +158,12 @@ export function CategoryDetail() {
             </div>
           </div>
         </div>
+{canManageContent && (
         <Button onClick={() => handleOpenDialog()} className="gap-2">
           <Plus className="w-4 h-4" />
           New Channel
         </Button>
+        )}
       </div>
 
       {/* Channels List */}
@@ -179,6 +184,7 @@ export function CategoryDetail() {
               )}
               <div className="ml-auto flex items-center gap-2 shrink-0">
                 <span className="text-text-tertiary text-xs">{channel.projectCount}</span>
+                {canManageContent && (
                 <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button
                     onClick={(e) => {
@@ -199,6 +205,7 @@ export function CategoryDetail() {
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
+                )}
               </div>
             </div>
           ))}
@@ -208,12 +215,16 @@ export function CategoryDetail() {
           <Tv className="w-12 h-12 mx-auto text-text-tertiary mb-4" />
           <h3 className="text-lg font-medium text-text-primary mb-2">No channels yet</h3>
           <p className="text-text-secondary text-sm mb-6">
-            Create your first channel in this category
+            {canManageContent
+              ? 'Create your first channel in this category'
+              : 'No channels available in this category'}
           </p>
+          {canManageContent && (
           <Button onClick={() => handleOpenDialog()}>
             <Plus className="w-4 h-4 mr-2" />
             Create Channel
           </Button>
+          )}
         </div>
       )}
 

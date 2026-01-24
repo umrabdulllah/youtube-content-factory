@@ -19,7 +19,7 @@ import { Register } from './pages/Register'
 import { UserManagement } from './pages/UserManagement'
 import { AdminDashboard } from './pages/AdminDashboard'
 import { AdminApiKeys } from './pages/AdminApiKeys'
-import { Toaster } from './components/ui/toaster'
+import { Toaster, ToastContextProvider } from './components/ui/toaster'
 import { UpdateNotification } from './components/UpdateNotification'
 
 // Completion sound notification
@@ -85,9 +85,10 @@ function App() {
 
   return (
     <ErrorBoundary>
-      <AuthProvider>
-        <HashRouter>
-          <Routes>
+      <ToastContextProvider>
+        <AuthProvider>
+          <HashRouter>
+            <Routes>
             {/* Public routes */}
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
@@ -142,10 +143,11 @@ function App() {
               }
             />
           </Routes>
-          <Toaster />
-          <UpdateNotification />
-        </HashRouter>
-      </AuthProvider>
+            <Toaster />
+            <UpdateNotification />
+          </HashRouter>
+        </AuthProvider>
+      </ToastContextProvider>
     </ErrorBoundary>
   )
 }

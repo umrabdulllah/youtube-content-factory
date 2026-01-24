@@ -80,8 +80,8 @@ export function registerCategoriesHandlers(): void {
       // Create category directory on disk
       await fileManager.createCategoryDirectory(category)
 
-      // Push to cloud for sync (only for org content, not manager content)
-      if (!userContext || userContext.role !== 'manager') {
+      // Push to cloud for sync (all authenticated users)
+      if (userContext) {
         try {
           await cloudSyncService.pushCategory(category)
         } catch (error) {
@@ -121,8 +121,8 @@ export function registerCategoriesHandlers(): void {
       // Update category.json
       await fileManager.updateCategoryMetadata(category)
 
-      // Push to cloud for sync (only for org content, not manager content)
-      if (!userContext || userContext.role !== 'manager') {
+      // Push to cloud for sync (all authenticated users)
+      if (userContext) {
         try {
           await cloudSyncService.pushCategory(category)
         } catch (error) {
@@ -148,8 +148,8 @@ export function registerCategoriesHandlers(): void {
         await fileManager.deleteCategoryDirectory(category.slug)
       }
 
-      // Delete from cloud (only for org content, not manager content)
-      if (!userContext || userContext.role !== 'manager') {
+      // Delete from cloud (all authenticated users)
+      if (userContext) {
         try {
           await cloudSyncService.deleteCloudCategory(id)
         } catch (error) {
@@ -177,8 +177,8 @@ export function registerCategoriesHandlers(): void {
 
       categoriesQueries.reorderCategories(ids)
 
-      // Update order in cloud (only for org content, not manager content)
-      if (!userContext || userContext.role !== 'manager') {
+      // Update order in cloud (all authenticated users)
+      if (userContext) {
         try {
           await cloudSyncService.reorderCloudCategories(ids)
         } catch (error) {

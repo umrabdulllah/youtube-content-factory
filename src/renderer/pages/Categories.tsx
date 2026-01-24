@@ -21,7 +21,8 @@ import { CATEGORY_COLORS } from '@shared/constants'
 export function Categories() {
   const navigate = useNavigate()
   const { toast } = useToast()
-  const { isAdmin } = useAuth()
+  const { isAdmin, isManager } = useAuth()
+  const canManageContent = isAdmin || isManager
   const [syncing, setSyncing] = React.useState(false)
   const [categories, setCategories] = React.useState<CategoryWithStats[]>([])
   const [loading, setLoading] = React.useState(true)
@@ -40,9 +41,9 @@ export function Categories() {
     loadCategories()
   }, [])
 
-  // Check for cloud updates (for editors only)
+  // Check for cloud updates (for editors only - admins and managers create their own content)
   React.useEffect(() => {
-    if (isAdmin) return // Admins don't need to sync from cloud
+    if (canManageContent) return // Admins and managers don't need to sync from cloud
 
     const checkForUpdates = async () => {
       setCheckingUpdates(true)
@@ -57,7 +58,7 @@ export function Categories() {
     }
 
     checkForUpdates()
-  }, [isAdmin])
+  }, [canManageContent])
 
   const loadCategories = async () => {
     try {
@@ -165,9 +166,9 @@ export function Categories() {
       <div className="flex items-center justify-between">
         <div>
           <p className="text-text-secondary text-sm">
-            {isAdmin ? 'Organize your channels into categories' : 'Categories synced from your organization'}
+            {canManageContent ? 'Organize your channels into categories' : 'Categories synced from your organization'}
           </p>
-          {!isAdmin && hasUpdates && (
+          {!canManageContent && hasUpdates && (
             <p className="text-accent text-xs mt-1 flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-accent"></span>
               Updates available from cloud
@@ -175,7 +176,7 @@ export function Categories() {
           )}
         </div>
         <div className="flex gap-2">
-          {!isAdmin && (
+          {!canManageContent && (
             <Button
               variant="outline"
               onClick={handleSyncFromCloud}
@@ -198,7 +199,7 @@ export function Categories() {
               )}
             </Button>
           )}
-          {isAdmin && (
+          {canManageContent && (
             <Button onClick={() => handleOpenDialog()} className="gap-2">
               <Plus className="w-4 h-4" />
               New Category
@@ -276,8 +277,8 @@ export function Categories() {
                     </div>
                   </div>
 
-                  {/* Action buttons with stagger animation - Admin only */}
-                  {isAdmin && (
+                  {/* Action buttons with stagger animation - Admin and Manager only */}
+                  {canManageContent && (
                     <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all duration-200 -mr-1 flex-shrink-0">
                       <button
                         onClick={(e) => {
@@ -345,14 +346,14 @@ export function Categories() {
             </div>
           </div>
           <h3 className="text-xl font-semibold text-text-primary mb-2">
-            {isAdmin ? 'No categories yet' : 'No categories available'}
+            {canManageContent ? 'No categories yet' : 'No categories available'}
           </h3>
           <p className="text-text-secondary text-sm mb-8 max-w-md mx-auto leading-relaxed">
-            {isAdmin
+            {canManageContent
               ? 'Create your first category to start organizing your YouTube channels and content projects'
               : 'Categories will appear here once your administrator creates them. Try syncing to check for updates.'}
           </p>
-          {isAdmin ? (
+          {canManageContent ? (
             <Button onClick={() => handleOpenDialog()} className="gap-2 px-6">
               <Plus className="w-4 h-4" />
               Create Category
