@@ -2,6 +2,7 @@ import { BrowserWindow } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs/promises'
 import { IPC_CHANNELS } from '@shared/ipc-channels'
+import { getDatabase } from '../database'
 import * as queueQueries from '../database/queries/queue'
 import * as projectsQueries from '../database/queries/projects'
 import * as channelsQueries from '../database/queries/channels'
@@ -36,7 +37,7 @@ async function getApiKeyForProject(
   }
 
   // Check if project has an owner (manager's project)
-  const db = require('../database').getDatabase()
+  const db = getDatabase()
   const row = db.prepare('SELECT owner_id FROM projects WHERE id = ?').get(projectId) as { owner_id: string | null } | undefined
 
   if (row?.owner_id) {
