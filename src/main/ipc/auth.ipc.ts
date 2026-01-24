@@ -196,7 +196,7 @@ export function registerAuthHandlers(): void {
         throw new Error('Invalid or expired invite token')
       }
 
-      // Create the user account
+      // Try to create the user account
       const { data, error } = await supabase.auth.signUp({
         email: input.email,
         password: input.password,
@@ -206,6 +206,82 @@ export function registerAuthHandlers(): void {
           },
         },
       })
+
+      // If user already exists, try to sign them in instead
+      if (error && error.message === 'User already registered') {
+        console.log('[Auth] User already exists in auth, attempting sign in...')
+
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+          email: input.email,
+          password: input.password,
+        })
+
+        if (signInError) {
+          throw new Error('User already exists. Please use login instead, or reset your password if forgotten.')
+        }
+
+        if (!signInData.user || !signInData.session) {
+          throw new Error('Sign in failed')
+        }
+
+        // Check if profile exists
+        const { data: existingProfile } = await supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('id', signInData.user.id)
+          .single()
+
+        if (existingProfile) {
+          // Profile already exists - just return it
+          await storeSessionSecurely(signInData.session)
+          return {
+            user: transformUserProfile(existingProfile),
+            session: {
+              accessToken: signInData.session.access_token,
+              refreshToken: signInData.session.refresh_token,
+              expiresAt: signInData.session.expires_at || 0,
+            },
+          }
+        }
+
+        // User exists in auth but no profile - create one using the invite
+        console.log('[Auth] Creating missing profile for existing auth user...')
+
+        const { data: newProfile, error: profileError } = await supabase
+          .from('user_profiles')
+          .insert({
+            id: signInData.user.id,
+            email: input.email,
+            display_name: input.displayName || null,
+            role: invite.role || 'editor',
+            invited_by: invite.created_by,
+            invited_at: new Date().toISOString(),
+          })
+          .select()
+          .single()
+
+        if (profileError) {
+          console.error('[Auth] Failed to create profile:', profileError)
+          throw new Error('Failed to create user profile. Please contact admin.')
+        }
+
+        // Mark invite as used
+        await supabase
+          .from('invite_tokens')
+          .update({ used_at: new Date().toISOString(), used_by: signInData.user.id })
+          .eq('id', invite.id)
+
+        await storeSessionSecurely(signInData.session)
+
+        return {
+          user: transformUserProfile(newProfile),
+          session: {
+            accessToken: signInData.session.access_token,
+            refreshToken: signInData.session.refresh_token,
+            expiresAt: signInData.session.expires_at || 0,
+          },
+        }
+      }
 
       if (error) {
         throw new Error(error.message)
